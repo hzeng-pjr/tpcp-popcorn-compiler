@@ -1,6 +1,7 @@
 #!/bin/sh
 cc="@CC@"
 target="-target @TARGET@-linux-gnu"
+gcc="@TARGET@-linux-gnu-gcc"
 libc_lib="@LIBDIR@"
 ldso="@LDSO@"
 cleared=
@@ -32,7 +33,7 @@ for x ; do
             ;;
         -lgcc|-lgcc_eh)
             file=lib${x#-l}.a
-            set -- "$@" $($cc $target -print-file-name=$file)
+            set -- "$@" $($gcc -print-file-name=$file)
             ;;
         -l*)
             test "$userlink" && set -- "$@" "$x"
