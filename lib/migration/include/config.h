@@ -60,7 +60,7 @@
 
 /* Dump verbose migration information to a log file. */
 #define _LOG 1
-#define LOG_FILE "/tmp/migrate.log"
+#define LOG_FILE "migrate.log"
 
 /*
  * Debug the migration process by spinning on the destination post-migration.
