@@ -196,6 +196,11 @@ def setup_argument_parsing():
                         action="store_true",
                         dest="use_kernel_52")
 
+    process_opts.add_argument("--clean",
+			help="Remove any build directories",
+			action="store_true",
+                        dest="clean_install")
+
     return parser
 
 def postprocess_args(args):
@@ -1066,6 +1071,30 @@ def build_namespace(base_path):
 
     os.chdir(cur_dir)
 
+def clean_build(install_path):
+    llvm_path = os.path.join(install_path, 'src/llvm/llvm/build')
+    gcc_path = os.path.join(install_path, 'src/gcc')
+    binutils_path = os.path.join(install_path, 'src/binutils-2.32')
+    glibc_path = os.path.join(install_path, 'src/glibc')
+
+    if os.path.exists(llvm_path):
+        shutil.rmtree (llvm_path)
+
+    dirs = os.listdir(gcc_path)
+    for d in dirs:
+        if re.search("build*", d):
+            shutil.rmtree (os.path.join (gcc_path, d))
+
+    dirs = os.listdir(binutils_path)
+    for d in dirs:
+        if re.search("build*", d):
+            shutil.rmtree (os.path.join (binutils_path, d))
+
+    dirs = os.listdir(glibc_path)
+    for d in dirs:
+        if re.search("build*", d):
+            shutil.rmtree (os.path.join (glibc_path, d))
+
 def main(args):
 
     if args.llvm_clang_install:
@@ -1113,6 +1142,9 @@ def main(args):
 
     if args.utils_install:
         install_utils(args.base_path, args.install_path, args.threads)
+
+    if args.clean_install:
+        clean_build(args.install_path)
 
     if args.namespace_install:
         build_namespace(args.base_path)
