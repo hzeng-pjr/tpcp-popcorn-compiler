@@ -1,6 +1,8 @@
 #include "stdio_impl.h"
 #include <sys/uio.h>
 
+extern size_t pcn_writev (int fd, const struct iovec *iov, int iovcnt);
+
 size_t __stdio_write(FILE *f, const unsigned char *buf, size_t len)
 {
 	struct iovec iovs[2] = {
@@ -12,7 +14,7 @@ size_t __stdio_write(FILE *f, const unsigned char *buf, size_t len)
 	int iovcnt = 2;
 	ssize_t cnt;
 	for (;;) {
-		cnt = syscall(SYS_writev, f->fd, iov, iovcnt);
+		cnt = pcn_writev (f->fd, iov, iovcnt);
 		if (cnt == rem) {
 			f->wend = f->buf + f->buf_size;
 			f->wpos = f->wbase = f->buf;

@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stack_transform.h>
+#include <remote_io.h>
 #include "platform.h"
 #include "migrate.h"
 #include "config.h"
@@ -92,6 +93,9 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 			struct regset_powerpc64 powerpc;
 			struct regset_x86_64 x86;
 		} regs_src;
+	
+		pcn_migrate ();
+
 		GET_LOCAL_REGSET(regs_src);
 
 		err = 0;
@@ -141,7 +145,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 	// Note: TLS is now invalid until after migration!
 	//__set_thread_area(get_thread_pointer(GET_TLS_POINTER, CURRENT_ARCH));
 	set_restore_context(0);
-
+	pcn_server_connect (pcn_server_ip);
 }
 
 /* Check if we should migrate, and invoke migration. */

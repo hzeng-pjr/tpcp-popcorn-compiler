@@ -1,0 +1,62 @@
+###############################################################################
+# Common
+###############################################################################
+
+BUILD := build
+INC   := include
+SRC   := src
+UTILS := utils
+LIB   := $(BUILD)/libremote_io.a
+INST  := /tmp/popcorn
+
+CFLAGS := -g -Wall -D_GNU_SOURCE -Wno-unused-function -I$(INC)
+
+AR  := ar
+
+LIB_HDR      := $(shell ls $(INC)/*.h)
+LIB_SRC      := $(shell ls $(SRC)/*.c)
+LIB_OBJ      := $(subst $(SRC),$(BUILD),$(LIB_SRC:.c=.o))
+
+ifeq ($(type),debug)
+CFLAGS += -O0 -D_DEBUG -D_CHECKS -D_LOG
+else
+CFLAGS += -O3
+endif
+
+###############################################################################
+# Recipes
+###############################################################################
+
+# Common
+
+all: $(LIB)
+
+clean:
+	@echo " [RM] $(BUILD)"
+	@rm -rf $(BUILD)
+
+%/.dir:
+	@echo " [MK] $*"
+	@mkdir -p $*
+	@touch $@
+
+build/%.o: src/%.c $(LIB_HDR)
+	@echo " [CC] $<"
+	@$(CC) $(CFLAGS) -o $@ -c $<
+
+$(LIB_OBJ): $(BUILD)/.dir
+
+$(LIB): $(LIB_OBJ)
+	@echo " [AR] $@"
+	@rm -f $(LIB)
+	@$(AR) -cq $(LIB) $(LIB_OBJ)
+
+install: $(LIB)
+	@echo " [INSTALL] $< to $(POPCORN)/lib"
+	@cp $< $(POPCORN)/lib
+	@echo " [INSTALL] $(INC)/remote_io.h to $(INST)/include"
+	@cp $(INC)/remote_io.h $(INST)/include
+
+install: install
+
+.PHONY: all install clean

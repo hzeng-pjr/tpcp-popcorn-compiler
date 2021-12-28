@@ -144,6 +144,10 @@ def setup_argument_parsing():
                         help="Install migration library",
                         action="store_true",
                         dest="migration_install")
+    process_opts.add_argument("--install-remote-io",
+                        help="Install remote I/O library",
+                        action="store_true",
+                        dest="remote_io_install")
     process_opts.add_argument("--install-stack-depth",
                         help="Install application call information library",
                         action="store_true",
@@ -185,6 +189,10 @@ def setup_argument_parsing():
                         help="Turn on timing in migration library",
                         action="store_true",
                         dest="enable_libmigration_timing")
+    build_opts.add_argument("--debug-remote-io",
+                        help="Enable debug output for remote I/O library",
+                        action="store_true",
+                        dest="debug_remote_io")
 
     process_opts.add_argument("--with-llvm-3_7",
                         help="Use LLVM-3.7 instead of LLVM-9",
@@ -251,6 +259,7 @@ def postprocess_args(args):
         args.libopenpop_install = True
         args.stacktransform_install = True
         args.migration_install = True
+        args.remote_io_install = True
         args.stackdepth_install = True
         args.tools_install = True
         args.utils_install = True
@@ -990,6 +999,24 @@ def install_migration(base_path, install_path, num_threads, libmigration_type,
 
     os.chdir(cur_dir)
 
+def install_remote_io(base_path, install_path, num_threads, rio_debug):
+    cur_dir = os.getcwd()
+
+    #=====================================================
+    # CONFIGURE & INSTALL STACK TRANSFORMATION LIBRARY
+    #=====================================================
+    os.chdir(os.path.join(base_path, 'lib', 'remote_io'))
+    run_cmd('clean libremote_io', ['make', 'clean'])
+
+    print('Making remote_io...')
+    args = ['make', '-j', str(num_threads), 'POPCORN={}'.format(install_path)]
+    if rio_debug: args += ['type=debug']
+    run_cmd('make libremote_io', args)
+    args += ['install']
+    run_cmd('install libremote_io', args)
+
+    os.chdir(cur_dir)
+
 def install_stackdepth(base_path, install_path, num_threads):
     cur_dir = os.getcwd()
 
@@ -1128,6 +1155,11 @@ def main(args):
         install_migration(args.base_path, args.install_path, args.threads,
                           args.libmigration_type,
                           args.enable_libmigration_timing)
+
+    if args.remote_io_install:
+        install_remote_io(args.base_path, args.install_path,
+                          args.threads,
+                          args.debug_remote_io)
 
     if args.libopenpop_install:
         for target in args.install_targets:

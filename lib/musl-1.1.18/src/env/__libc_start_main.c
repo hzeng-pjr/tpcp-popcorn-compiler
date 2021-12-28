@@ -14,6 +14,8 @@ weak_alias(dummy, _init);
 __attribute__((__weak__, __visibility__("hidden")))
 extern void (*const __init_array_start)(void), (*const __init_array_end)(void);
 
+extern void pcn_server_init ();
+
 static void dummy1(void *p) {}
 weak_alias(dummy1, __init_ssp);
 
@@ -72,6 +74,7 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv)
 	__popcorn_stack_base = argv;
 
 	__init_libc(envp, argv[0]);
+	pcn_server_init();
 	__libc_start_init();
 
 	/* Pass control to the application */
