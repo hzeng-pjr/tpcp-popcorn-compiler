@@ -35,8 +35,8 @@ uint16_t pcn_server_port;
  */
 int pcn_server_sockfd;
 int pcn_client_sockfd;
+uint32_t local_ip;
 
-static uint32_t local_ip;
 static int migrate_pending;
 
 static int rio_debug;
@@ -45,7 +45,7 @@ static uint16_t alloc_server_port ();
 
 #define RIO_BUF_SZ 512
 
-static void
+void
 rio_printf (char *str, ...)
 {
   char buf[RIO_BUF_SZ];
@@ -67,11 +67,6 @@ pcn_server_init ()
   local_ip = htonl (0x7f000001); /* 127.0.0.1  */
   pcn_server_port = alloc_server_port ();
   pcn_server_sockfd = pcn_server_connect (0);
-
-  if (getsockname(pcn_server_sockfd, (struct sockaddr *)&sin, &len) == -1)
-    perror("getsockname");
-  else
-    pcn_server_port = ntohs (sin.sin_port);
 }
 
 /*
@@ -180,7 +175,7 @@ connect_to (uint32_t ip, uint16_t port)
 
   assert (ai != NULL && ai->ai_family == AF_INET);
 
-  if (1 ||  rio_debug)
+  if (rio_debug)
     rio_printf ("connecting to %s:%s\n", s_addr, s_port);
 
   sockfd = socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
@@ -191,7 +186,8 @@ connect_to (uint32_t ip, uint16_t port)
     }
 
   if (connect (sockfd, ai->ai_addr, ai->ai_addrlen) == -1) {
-    perror ("connection failed\n");
+    perror ("connection failed");
+    rio_printf ("   -> %s:%s\n", s_addr, s_port);
     exit (EXIT_FAILURE);
   }
 
@@ -201,8 +197,14 @@ connect_to (uint32_t ip, uint16_t port)
 static void
 do_control (struct pcn_msg_hdr *hdr, int fd)
 {
+  if (local_ip != pcn_server_ip) {
+    write (pcn_server_ip, hdr, sizeof (struct pcn_msg_hdr));
+    return;
+  }
+
   switch (hdr->msg_kind) {
   case PCN_CTL_MIGRATE:
+    rio_printf ("server: received migration request\n");
     migrate_pending = 1;
     break;
 
@@ -214,6 +216,15 @@ do_control (struct pcn_msg_hdr *hdr, int fd)
 static void
 do_syscall (struct pcn_msg_hdr *hdr, int fd)
 {
+  if (rio_debug) {
+    char s_addr[INET_ADDRSTRLEN], l_addr[INET_ADDRSTRLEN];
+
+    inet_ntop (AF_INET, &pcn_server_ip, s_addr, INET_ADDRSTRLEN);
+    inet_ntop (AF_INET, &local_ip, l_addr, INET_ADDRSTRLEN);
+
+    rio_printf ("%s: %s -> %s\n", __FUNCTION__, s_addr, l_addr);
+  }
+
   switch (hdr->msg_kind) {
   case PCN_SYS_WRITE:
     rio_get_write (hdr, fd);
@@ -224,7 +235,8 @@ do_syscall (struct pcn_msg_hdr *hdr, int fd)
   }
 }
 
-static void
+/* Returns 1 if a client has been dropped.  */
+static int
 process_message (int fd)
 {
   struct pcn_msg_hdr hdr;
@@ -233,12 +245,14 @@ process_message (int fd)
   res = read (fd, &hdr, sizeof (hdr));
 
   if (res == 0) {
-    if (migrate_pending)
-      migrate_pending--;
-    else {
+    if (!migrate_pending) {
       rio_printf ("client hung up... terminating\n");
       exit (EXIT_SUCCESS);
     }
+
+    rio_printf ("client hung up\n");
+
+    return 1;
   }
 
   if (res < sizeof (hdr)) {
@@ -259,13 +273,13 @@ process_message (int fd)
     rio_printf ("unexpected message type: %d\n", hdr.msg_type);
     ;
   }
+
+  return 0;
 }
 
 static void
 remote_io_server (int listen_fd)
 {
-  uint32_t myip = pcn_get_ip ();
-
   /* There are at most three socket descriptors to keep track of:
    *   1: The listener socket
    *   2: The socket to the primary server
@@ -279,12 +293,14 @@ remote_io_server (int listen_fd)
   struct pollfd pfds[3];
   int fd_count = 1;
 
+  local_ip = pcn_get_ip ();
+
   //rio_printf ("starting server:%hd\n", pcn_server_port);
 
   pfds[0].fd = listen_fd;
   pfds[0].events = POLLIN;
 
-  if (myip != pcn_server_ip)
+  if (local_ip != pcn_server_ip)
     {
       pcn_server_sockfd = connect_to (pcn_server_ip, pcn_server_port);
       pfds[1].fd = pcn_server_sockfd;
@@ -308,8 +324,19 @@ remote_io_server (int listen_fd)
 
     for (i = 0; i < fd_count; i++) {
       if (pfds[i].revents & POLLIN) {
+	int res;
+
 	if (pfds[i].fd != listen_fd) {
-	  process_message (pfds[i].fd);
+	  res = process_message (pfds[i].fd);
+
+	  if (res == 1) {
+	    assert (pfds[i].fd == pcn_client_sockfd);
+
+	    fd_count--;
+	    pcn_client_sockfd = -1;
+	    pfds[fd_count].fd = pcn_client_sockfd;
+	  }
+
 	  continue;
 	}
 
@@ -324,7 +351,7 @@ remote_io_server (int listen_fd)
 	  char buf[INET_ADDRSTRLEN];
 	  struct sockaddr_in *sin = (struct sockaddr_in *)&remoteaddr;
 
-	  if (rio_debug) {
+	  if (1 || rio_debug) {
 	    inet_ntop (remoteaddr.ss_family, &sin->sin_addr, buf,
 		       INET6_ADDRSTRLEN);
 	    rio_printf ("%s: accepted client %s\n", __FUNCTION__, buf);
@@ -334,6 +361,7 @@ remote_io_server (int listen_fd)
 	  pfds[fd_count].events = POLLIN;
 	  pfds[fd_count].revents = 0;
 	  fd_count++;
+	  migrate_pending = 0;
 	}
       } else if (pfds[i].revents & POLLHUP) {
 	assert (pfds[i].fd == pcn_client_sockfd);
@@ -348,7 +376,7 @@ remote_io_server (int listen_fd)
     }
   }
 
-  if (pcn_server_ip != myip)
+  if (pcn_server_ip != local_ip)
     ; // coordinate shutdown
   exit (EXIT_SUCCESS);
 }
@@ -422,12 +450,6 @@ pcn_server_connect (uint32_t ip)
 	  exit (EXIT_FAILURE);
 	}
 
-      if (pcn_server_ip == 0)
-	{
-	  pcn_server_ip = myip;
-	  pcn_server_port = port;
-	}
-
       if (listen (sockfd, 2) == -1) {
 	perror ("listen");
 	exit (EXIT_FAILURE);
@@ -443,8 +465,13 @@ pcn_server_connect (uint32_t ip)
 
       res = fork ();
 
-      if (res == 0)
+      if (res != 0) {
+	/* Run the application on the fork'ed process so that CRIU
+	   does not attempt to suspend the server. Eventually, this
+	   might need to use a standalone server.  */
+
 	remote_io_server (sockfd);   /* Never return.  */
+      }
 
       close (sockfd);
     }
@@ -544,4 +571,8 @@ pcn_migrate ()
   hdr.msg_kind = PCN_CTL_MIGRATE;
 
   pcn_send (pcn_server_sockfd, &hdr, NULL, 0);
+
+  close (pcn_server_sockfd);
+
+  pcn_server_sockfd = -1;
 }

@@ -10,6 +10,7 @@
 #include <remote_io.h>
 #include <message.h>
 #include <sys/socket.h>
+#include <syscall.h>
 #include <unistd.h>
 
 struct pcn_write_msg {
@@ -18,19 +19,32 @@ struct pcn_write_msg {
   char buf[0];
 };
 
+extern uint32_t local_ip;
+void rio_printf (char *str, ...);
+
 void
 rio_get_write (struct pcn_msg_hdr *hdr, int fd)
 {
   struct pcn_write_msg *msg = malloc (hdr->msg_size);
   int res;
 
-  //printf ("%s\n", __FUNCTION__);
+  //rio_printf ("%s\n", __FUNCTION__);
 
   res = recv (fd, msg, hdr->msg_size, 0);
   if (res < hdr->msg_size)
-    printf ("error: lost data\n");
+    rio_printf ("error: lost data\n");
 
-  write (msg->fd, msg->buf, msg->size);
+  if (local_ip != pcn_server_ip) {
+    struct iovec iov[1];
+
+    iov[0].iov_base = msg->buf;
+    iov[0].iov_len = msg->size;
+
+    //syscall (SYS_writev, pcn_server_ip, iov, 2);
+    pcn_writev (msg->fd, iov, 1);
+  } else {
+    write (msg->fd, msg->buf, msg->size);
+  }
 
   free (msg);
 
@@ -49,6 +63,10 @@ ssize_t pcn_writev (int fd, const struct iovec *iov, int iovcnt)
   struct iovec payload[iovcnt + 1];
   struct pcn_write_msg msg;
   int res;
+
+  /* Check if the server is down.  */
+  if (pcn_server_sockfd < 0)
+    return syscall (SYS_writev, fd, iov, iovcnt);
 
   for (i = 0; i < iovcnt; i++)
     size += iov[i].iov_len;
