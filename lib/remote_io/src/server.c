@@ -19,6 +19,9 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 
+#include <sys/wait.h>
+#include <signal.h>
+
 #include <remote_io.h>
 #include <server.h>
 #include <message.h>
@@ -38,6 +41,7 @@ int pcn_client_sockfd;
 uint32_t local_ip;
 
 static int migrate_pending;
+static int child_pid = -1;
 
 static int rio_debug;
 
@@ -67,6 +71,16 @@ pcn_server_init ()
   local_ip = htonl (0x7f000001); /* 127.0.0.1  */
   pcn_server_port = alloc_server_port ();
   pcn_server_sockfd = pcn_server_connect (0);
+}
+
+static void
+do_sigchld (int signo)
+{
+  int status, pid;
+
+  pid = wait (&status);
+  assert (pid == child_pid);
+  child_pid = -100;
 }
 
 /*
@@ -314,7 +328,9 @@ remote_io_server (int listen_fd)
     socklen_t addrlen;
     int i;
 
-    if (poll_count == -1) {
+    if (poll_count == -1 && child_pid == -100)
+      child_pid = -1;
+    else if (poll_count == -1 ) {
       perror ("poll");
       exit (EXIT_FAILURE);
     }
@@ -463,9 +479,17 @@ pcn_server_connect (uint32_t ip)
 
       freeaddrinfo (ai);
 
-      res = fork ();
+      child_pid = fork ();
 
-      if (res != 0) {
+      if (child_pid != 0) {
+	struct sigaction sa;
+
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = do_sigchld;
+
+	sigaction(SIGCHLD, &sa, NULL);
+
 	/* Run the application on the fork'ed process so that CRIU
 	   does not attempt to suspend the server. Eventually, this
 	   might need to use a standalone server.  */

@@ -96,6 +96,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 
 		printf ("pcn_server_port = %d\n", pcn_server_port);
 		pcn_migrate ();
+		close (pcn_server_sockfd);
 
 		GET_LOCAL_REGSET(regs_src);
 
