@@ -51,7 +51,7 @@ llvm_version = 9
 
 # Binutils 2.32 URL
 #binutils_url = 'http://ftp.gnu.org/gnu/binutils/binutils-2.32.tar.bz2'
-binutils_url = 'http://philippidis.net/~jimmy/mirrors/binutils-2.32.tar.bz2'
+binutils_url = 'file:///scratch/mirrors/binutils-2.32.tar.bz2'
 
 # GNU libc (glibc)
 

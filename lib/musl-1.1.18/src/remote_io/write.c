@@ -21,42 +21,7 @@ struct pcn_write_msg {
   char buf[0];
 };
 
-extern uint32_t local_ip;
-void rio_printf (char *str, ...);
-
-void
-rio_get_write (struct pcn_msg_hdr *hdr, int fd)
-{
-  struct pcn_write_msg *msg = malloc (hdr->msg_size);
-  int res;
-
-  //rio_printf ("%s\n", __FUNCTION__);
-
-  res = recv (fd, msg, hdr->msg_size, 0);
-  if (res < hdr->msg_size)
-    rio_printf ("error: lost data\n");
-
-  if (local_ip != pcn_server_ip) {
-    struct iovec iov[1];
-
-    iov[0].iov_base = msg->buf;
-    iov[0].iov_len = msg->size;
-
-    //syscall (SYS_writev, pcn_server_ip, iov, 2);
-    pcn_writev (msg->fd, iov, 1);
-  } else {
-    write (msg->fd, msg->buf, msg->size);
-  }
-
-  free (msg);
-
-//  hdr->msg_type = PCN_TYPE_CONTROL;
-//  hdr->msg_kind = PCN_CTL_ACK;
-//
-//  write (fd, hdr, sizeof (struct pcn_msg_hdr));
-}
-
-ssize_t pcn_writev (int fd, const struct iovec *iov, int iovcnt)
+ssize_t musl_pcn_writev (int fd, const struct iovec *iov, int iovcnt)
 {
   int i, size = 0;
 //  int off = 0;
@@ -95,7 +60,7 @@ ssize_t pcn_writev (int fd, const struct iovec *iov, int iovcnt)
   hdr.msg_kind = PCN_SYS_WRITE;
   hdr.msg_id = 0;
 
-  res = pcn_send (pcn_server_sockfd, &hdr, payload, iovcnt+1);
+  res = musl_pcn_send (pcn_server_sockfd, &hdr, payload, iovcnt+1);
 
 //  printf ("size: hdr = %zu, msg = %zu (%d), payload = %d\n",
 //	  sizeof (hdr), sizeof (msg), msg.size, size);

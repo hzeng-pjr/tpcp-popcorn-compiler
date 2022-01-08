@@ -26,8 +26,9 @@
 #include <server.h>
 #include <message.h>
 
-uint32_t pcn_server_ip;
-uint16_t pcn_server_port;
+extern int pcn_remote_io_active;
+extern uint32_t pcn_server_ip;
+extern uint16_t pcn_server_port;
 
 /* On a server process, pcn_server_sockfd represents the socket connection
  * to the primary server if necessary. pcn_client_sockfd represents the
@@ -36,8 +37,8 @@ uint16_t pcn_server_port;
  * On the local application, pcn_server_sockfd represents the socket
  * connection to the local server, and pcn_client_sockfd is unused.
  */
-int pcn_server_sockfd;
-int pcn_client_sockfd;
+extern int pcn_server_sockfd;
+extern int pcn_client_sockfd;
 uint32_t local_ip;
 
 static int migrate_pending;
@@ -62,12 +63,10 @@ rio_printf (char *str, ...)
   syscall (SYS_write, 1, buf, strlen (buf));
 }
 
-void
+void __attribute__((constructor))
 pcn_server_init ()
 {
-  struct sockaddr_in sin;
-  socklen_t len = sizeof (sin);
-
+  pcn_remote_io_active = 1;
   local_ip = htonl (0x7f000001); /* 127.0.0.1  */
   pcn_server_port = alloc_server_port ();
   pcn_server_sockfd = pcn_server_connect (0);

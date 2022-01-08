@@ -24,6 +24,6 @@ struct pcn_msg_hdr {
   int msg_size;  /* size of the message payload. */
 };
 
-int pcn_send (int fd, struct pcn_msg_hdr *hdr, struct iovec *payload, int cnt);
+int musl_pcn_send (int fd, struct pcn_msg_hdr *hdr, struct iovec *payload, int cnt);
 
 #endif

@@ -74,7 +74,6 @@ int __libc_start_main(int (*main)(int,char **,char **), int argc, char **argv)
 	__popcorn_stack_base = argv;
 
 	__init_libc(envp, argv[0]);
-	pcn_server_init();
 	__libc_start_init();
 
 	/* Pass control to the application */

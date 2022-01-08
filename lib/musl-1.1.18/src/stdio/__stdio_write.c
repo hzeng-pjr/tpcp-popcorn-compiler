@@ -1,7 +1,8 @@
 #include "stdio_impl.h"
 #include <sys/uio.h>
 
-extern size_t pcn_writev (int fd, const struct iovec *iov, int iovcnt);
+extern int pcn_remote_io_active;
+extern size_t musl_pcn_writev (int fd, const struct iovec *iov, int iovcnt);
 
 size_t __stdio_write(FILE *f, const unsigned char *buf, size_t len)
 {
@@ -14,7 +15,10 @@ size_t __stdio_write(FILE *f, const unsigned char *buf, size_t len)
 	int iovcnt = 2;
 	ssize_t cnt;
 	for (;;) {
-		cnt = pcn_writev (f->fd, iov, iovcnt);
+		if (pcn_remote_io_active)
+			cnt = musl_pcn_writev (f->fd, iov, iovcnt);
+		else
+			cnt = syscall(SYS_writev, f->fd, iov, iovcnt);
 		if (cnt == rem) {
 			f->wend = f->buf + f->buf_size;
 			f->wpos = f->wbase = f->buf;
