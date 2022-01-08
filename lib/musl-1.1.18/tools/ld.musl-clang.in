@@ -1,8 +1,8 @@
 #!/bin/sh
 cc="@CC@"
 target="-target @TARGET@-linux-gnu"
-gcc="$(dirname @CC@)/@TARGET@-popcorn-linux-gnu-gcc"
-ld="$(dirname @CC@)/@TARGET@-popcorn-linux-gnu-ld.bfd"
+gcc="@TARGET@-popcorn-linux-gnu-gcc"
+ld="@TARGET@-popcorn-linux-gnu-ld.bfd"
 libc_lib="@LIBDIR@"
 ldso="@LDSO@"
 cleared=
@@ -34,7 +34,7 @@ for x ; do
             ;;
         -lgcc|-lgcc_eh)
             file=lib${x#-l}.a
-            set -- "$@" $($gcc -print-file-name=$file)
+	    set -- "$@" $($gcc -print-file-name=$file)
             ;;
         -l*)
             test "$userlink" && set -- "$@" "$x"
@@ -50,7 +50,5 @@ for x ; do
             ;;
     esac
 done
-
-#exec $($cc $target -print-prog-name=ld) -nostdlib "$@" -lc -lgcc -lgcc_eh -dynamic-linker "$ldso"
 
 exec $ld -nostdlib "$@" -lc -lgcc -lgcc_eh -dynamic-linker "$ldso"

@@ -1,5 +1,5 @@
 diff --git a/clang/include/clang/AST/ASTContext.h b/clang/include/clang/AST/ASTContext.h
-index 1d1aaf4fb11..9bd3a1add69 100644
+index 1d1aaf4fb115..9bd3a1add690 100644
 --- a/clang/include/clang/AST/ASTContext.h
 +++ b/clang/include/clang/AST/ASTContext.h
 @@ -43,6 +43,7 @@
@@ -42,7 +42,7 @@ index 1d1aaf4fb11..9bd3a1add69 100644
    //                           Type Constructors
    //===--------------------------------------------------------------------===//
 diff --git a/clang/include/clang/AST/OpenMPClause.h b/clang/include/clang/AST/OpenMPClause.h
-index eadcc62a345..a4ef31985a6 100644
+index eadcc62a3457..a4ef31985a6a 100644
 --- a/clang/include/clang/AST/OpenMPClause.h
 +++ b/clang/include/clang/AST/OpenMPClause.h
 @@ -6181,6 +6181,64 @@ public:
@@ -112,7 +112,7 @@ index eadcc62a345..a4ef31985a6 100644
  template<class ImplClass, template <typename> class Ptr, typename RetTy>
 diff --git a/clang/include/clang/AST/Prefetch.h b/clang/include/clang/AST/Prefetch.h
 new file mode 100644
-index 00000000000..1fe4127c15c
+index 000000000000..1fe4127c15c9
 --- /dev/null
 +++ b/clang/include/clang/AST/Prefetch.h
 @@ -0,0 +1,38 @@
@@ -155,7 +155,7 @@ index 00000000000..1fe4127c15c
 +#endif
 +
 diff --git a/clang/include/clang/AST/RecursiveASTVisitor.h b/clang/include/clang/AST/RecursiveASTVisitor.h
-index 698fba2f4ed..ebd73374b69 100644
+index 698fba2f4ed1..ebd73374b691 100644
 --- a/clang/include/clang/AST/RecursiveASTVisitor.h
 +++ b/clang/include/clang/AST/RecursiveASTVisitor.h
 @@ -3304,6 +3304,14 @@ bool RecursiveASTVisitor<Derived>::VisitOMPIsDevicePtrClause(
@@ -174,7 +174,7 @@ index 698fba2f4ed..ebd73374b69 100644
  // need to recurse on anything.  These are ones that have methods
  // returning decls or qualtypes or nestednamespecifier -- though I'm
 diff --git a/clang/include/clang/AST/Stmt.h b/clang/include/clang/AST/Stmt.h
-index 403b88ac3a3..3019c656068 100644
+index 403b88ac3a3c..3019c6560681 100644
 --- a/clang/include/clang/AST/Stmt.h
 +++ b/clang/include/clang/AST/Stmt.h
 @@ -15,6 +15,7 @@
@@ -219,7 +219,7 @@ index 403b88ac3a3..3019c656068 100644
    using capture_iterator = Capture *;
    using const_capture_iterator = const Capture *;
 diff --git a/clang/include/clang/AST/StmtOpenMP.h b/clang/include/clang/AST/StmtOpenMP.h
-index e37f5b1e000..535f5a84835 100644
+index e37f5b1e0004..535f5a84835e 100644
 --- a/clang/include/clang/AST/StmtOpenMP.h
 +++ b/clang/include/clang/AST/StmtOpenMP.h
 @@ -41,6 +41,8 @@ class OMPExecutableDirective : public Stmt {
@@ -251,7 +251,7 @@ index e37f5b1e000..535f5a84835 100644
  
  /// This represents '#pragma omp parallel' directive.
 diff --git a/clang/include/clang/Basic/CodeGenOptions.def b/clang/include/clang/Basic/CodeGenOptions.def
-index cd7a8454876..b870fb707d7 100644
+index cd7a84548765..b870fb707d7f 100644
 --- a/clang/include/clang/Basic/CodeGenOptions.def
 +++ b/clang/include/clang/Basic/CodeGenOptions.def
 @@ -271,6 +271,12 @@ CODEGENOPT(DebugFwdTemplateParams, 1, 0) ///< Whether to emit complete
@@ -268,7 +268,7 @@ index cd7a8454876..b870fb707d7 100644
                                        ///  vtable optimization.
  
 diff --git a/clang/include/clang/Basic/CodeGenOptions.h b/clang/include/clang/Basic/CodeGenOptions.h
-index 4e9025d2fea..5f0f5353f48 100644
+index 4e9025d2fea9..5f0f5353f489 100644
 --- a/clang/include/clang/Basic/CodeGenOptions.h
 +++ b/clang/include/clang/Basic/CodeGenOptions.h
 @@ -283,6 +283,9 @@ public:
@@ -282,7 +282,7 @@ index 4e9025d2fea..5f0f5353f48 100644
    std::vector<uint8_t> CmdArgs;
  
 diff --git a/clang/include/clang/Basic/DiagnosticParseKinds.td b/clang/include/clang/Basic/DiagnosticParseKinds.td
-index 8e6ced0dea5..cc209b12d5c 100644
+index 8e6ced0dea54..cc209b12d5c2 100644
 --- a/clang/include/clang/Basic/DiagnosticParseKinds.td
 +++ b/clang/include/clang/Basic/DiagnosticParseKinds.td
 @@ -1202,6 +1202,14 @@ def err_omp_mapper_illegal_identifier : Error<
@@ -324,7 +324,7 @@ index 8e6ced0dea5..cc209b12d5c 100644
  
  let CategoryName = "Modules Issue" in {
 diff --git a/clang/include/clang/Basic/DiagnosticSemaKinds.td b/clang/include/clang/Basic/DiagnosticSemaKinds.td
-index 275c4e4365d..0be14ff1d6d 100644
+index 275c4e4365d1..0be14ff1d6d5 100644
 --- a/clang/include/clang/Basic/DiagnosticSemaKinds.td
 +++ b/clang/include/clang/Basic/DiagnosticSemaKinds.td
 @@ -9290,6 +9290,10 @@ def err_omp_wrong_dependency_iterator_type : Error<
@@ -339,7 +339,7 @@ index 275c4e4365d..0be14ff1d6d 100644
  
  let CategoryName = "Related Result Type Issue" in {
 diff --git a/clang/include/clang/Basic/LangOptions.def b/clang/include/clang/Basic/LangOptions.def
-index 31aca2b0d69..21e4b96e2be 100644
+index 31aca2b0d695..21e4b96e2bea 100644
 --- a/clang/include/clang/Basic/LangOptions.def
 +++ b/clang/include/clang/Basic/LangOptions.def
 @@ -330,6 +330,9 @@ LANGOPT(PaddingOnUnsignedFixedPoint, 1, 0,
@@ -353,7 +353,7 @@ index 31aca2b0d69..21e4b96e2be 100644
  #undef COMPATIBLE_LANGOPT
  #undef BENIGN_LANGOPT
 diff --git a/clang/include/clang/Basic/OpenMPKinds.def b/clang/include/clang/Basic/OpenMPKinds.def
-index 9685af4cade..1d4915407be 100644
+index 9685af4cade8..1d4915407bee 100644
 --- a/clang/include/clang/Basic/OpenMPKinds.def
 +++ b/clang/include/clang/Basic/OpenMPKinds.def
 @@ -191,6 +191,9 @@
@@ -435,7 +435,7 @@ index 9685af4cade..1d4915407be 100644
  #undef OPENMP_DECLARE_MAPPER_CLAUSE
  #undef OPENMP_TASKGROUP_CLAUSE
 diff --git a/clang/include/clang/Basic/OpenMPKinds.h b/clang/include/clang/Basic/OpenMPKinds.h
-index d8dee2310ec..f1f83a63be8 100644
+index d8dee2310ec2..f1f83a63be8f 100644
 --- a/clang/include/clang/Basic/OpenMPKinds.h
 +++ b/clang/include/clang/Basic/OpenMPKinds.h
 @@ -159,6 +159,14 @@ struct OpenMPScheduleTy final {
@@ -454,7 +454,7 @@ index d8dee2310ec..f1f83a63be8 100644
  const char *getOpenMPDirectiveName(OpenMPDirectiveKind Kind);
  
 diff --git a/clang/include/clang/Basic/TokenKinds.def b/clang/include/clang/Basic/TokenKinds.def
-index 55e94d387c9..1f7004d29e0 100644
+index 55e94d387c9d..1f7004d29e05 100644
 --- a/clang/include/clang/Basic/TokenKinds.def
 +++ b/clang/include/clang/Basic/TokenKinds.def
 @@ -836,6 +836,12 @@ ANNOTATION(module_end)
@@ -471,7 +471,7 @@ index 55e94d387c9..1f7004d29e0 100644
  #undef TESTING_KEYWORD
  #undef OBJC_AT_KEYWORD
 diff --git a/clang/include/clang/CodeGen/BackendUtil.h b/clang/include/clang/CodeGen/BackendUtil.h
-index 01b1f5bbd6e..2401d8ad5ff 100644
+index 01b1f5bbd6ee..2401d8ad5ffc 100644
 --- a/clang/include/clang/CodeGen/BackendUtil.h
 +++ b/clang/include/clang/CodeGen/BackendUtil.h
 @@ -33,7 +33,8 @@ namespace clang {
@@ -520,7 +520,7 @@ index 01b1f5bbd6e..2401d8ad5ff 100644
  
  #endif
 diff --git a/clang/include/clang/CodeGen/CodeGenAction.h b/clang/include/clang/CodeGen/CodeGenAction.h
-index 1db904ea974..cecb2a809d2 100644
+index 1db904ea974c..cecb2a809d2c 100644
 --- a/clang/include/clang/CodeGen/CodeGenAction.h
 +++ b/clang/include/clang/CodeGen/CodeGenAction.h
 @@ -10,6 +10,7 @@
@@ -592,7 +592,7 @@ index 1db904ea974..cecb2a809d2 100644
  #endif
 diff --git a/clang/include/clang/CodeGen/PopcornUtil.h b/clang/include/clang/CodeGen/PopcornUtil.h
 new file mode 100644
-index 00000000000..b1a64b3e58b
+index 000000000000..b1a64b3e58b3
 --- /dev/null
 +++ b/clang/include/clang/CodeGen/PopcornUtil.h
 @@ -0,0 +1,47 @@
@@ -645,7 +645,7 @@ index 00000000000..b1a64b3e58b
 +#endif
 diff --git a/clang/include/clang/CodeGen/PrefetchBuilder.h b/clang/include/clang/CodeGen/PrefetchBuilder.h
 new file mode 100644
-index 00000000000..9716abe37e2
+index 000000000000..9716abe37e22
 --- /dev/null
 +++ b/clang/include/clang/CodeGen/PrefetchBuilder.h
 @@ -0,0 +1,56 @@
@@ -706,7 +706,7 @@ index 00000000000..9716abe37e2
 +#endif
 +
 diff --git a/clang/include/clang/Driver/Driver.h b/clang/include/clang/Driver/Driver.h
-index f9528641073..2a3b5f02599 100644
+index f9528641073a..2a3b5f025999 100644
 --- a/clang/include/clang/Driver/Driver.h
 +++ b/clang/include/clang/Driver/Driver.h
 @@ -203,6 +203,9 @@ private:
@@ -720,7 +720,7 @@ index f9528641073..2a3b5f02599 100644
    std::string CCCGenericGCCName;
  
 diff --git a/clang/include/clang/Driver/Options.td b/clang/include/clang/Driver/Options.td
-index 4ea8bfff097..b8bcd0889e9 100644
+index 4ea8bfff0973..b8bcd0889e9f 100644
 --- a/clang/include/clang/Driver/Options.td
 +++ b/clang/include/clang/Driver/Options.td
 @@ -191,6 +191,8 @@ def Link_Group : OptionGroup<"<T/e/s/t/u group>">, DocName<"Linker flags">,
@@ -746,7 +746,7 @@ index 4ea8bfff097..b8bcd0889e9 100644
  def prebind : Flag<["-"], "prebind">;
  def preload : Flag<["-"], "preload">;
 diff --git a/clang/include/clang/Frontend/CompilerInstance.h b/clang/include/clang/Frontend/CompilerInstance.h
-index eb49c53ff40..9a951fad430 100644
+index eb49c53ff40b..9a951fad430c 100644
 --- a/clang/include/clang/Frontend/CompilerInstance.h
 +++ b/clang/include/clang/Frontend/CompilerInstance.h
 @@ -262,6 +262,13 @@ public:
@@ -764,7 +764,7 @@ index eb49c53ff40..9a951fad430 100644
      return Invocation->getDependencyOutputOpts();
    }
 diff --git a/clang/include/clang/Frontend/CompilerInvocation.h b/clang/include/clang/Frontend/CompilerInvocation.h
-index 413134be4ce..d37d84cdd55 100644
+index 413134be4cef..d37d84cdd55b 100644
 --- a/clang/include/clang/Frontend/CompilerInvocation.h
 +++ b/clang/include/clang/Frontend/CompilerInvocation.h
 @@ -126,6 +126,9 @@ class CompilerInvocation : public CompilerInvocationBase {
@@ -790,7 +790,7 @@ index 413134be4ce..d37d84cdd55 100644
      return DependencyOutputOpts;
    }
 diff --git a/clang/include/clang/Frontend/FrontendOptions.h b/clang/include/clang/Frontend/FrontendOptions.h
-index a0acb1f066f..8995e5a7c03 100644
+index a0acb1f066f2..8995e5a7c030 100644
 --- a/clang/include/clang/Frontend/FrontendOptions.h
 +++ b/clang/include/clang/Frontend/FrontendOptions.h
 @@ -73,6 +73,9 @@ enum ActionKind {
@@ -804,7 +804,7 @@ index a0acb1f066f..8995e5a7c03 100644
    FixIt,
  
 diff --git a/clang/include/clang/Parse/Parser.h b/clang/include/clang/Parse/Parser.h
-index 7c67c35f615..324f21bc7ae 100644
+index 7c67c35f615a..324f21bc7aea 100644
 --- a/clang/include/clang/Parse/Parser.h
 +++ b/clang/include/clang/Parse/Parser.h
 @@ -200,6 +200,7 @@ class Parser : public CodeCompletionHandler {
@@ -864,7 +864,7 @@ index 7c67c35f615..324f21bc7ae 100644
    /// Parses clauses with list.
 diff --git a/clang/include/clang/Sema/PrefetchAnalysis.h b/clang/include/clang/Sema/PrefetchAnalysis.h
 new file mode 100644
-index 00000000000..bbfe5b5fda6
+index 000000000000..bbfe5b5fda63
 --- /dev/null
 +++ b/clang/include/clang/Sema/PrefetchAnalysis.h
 @@ -0,0 +1,146 @@
@@ -1016,7 +1016,7 @@ index 00000000000..bbfe5b5fda6
 +
 diff --git a/clang/include/clang/Sema/PrefetchDataflow.h b/clang/include/clang/Sema/PrefetchDataflow.h
 new file mode 100644
-index 00000000000..07aa621cd31
+index 000000000000..07aa621cd315
 --- /dev/null
 +++ b/clang/include/clang/Sema/PrefetchDataflow.h
 @@ -0,0 +1,84 @@
@@ -1106,7 +1106,7 @@ index 00000000000..07aa621cd31
 +
 diff --git a/clang/include/clang/Sema/PrefetchExprBuilder.h b/clang/include/clang/Sema/PrefetchExprBuilder.h
 new file mode 100644
-index 00000000000..755d9bfff5c
+index 000000000000..755d9bfff5c4
 --- /dev/null
 +++ b/clang/include/clang/Sema/PrefetchExprBuilder.h
 @@ -0,0 +1,102 @@
@@ -1213,7 +1213,7 @@ index 00000000000..755d9bfff5c
 +#endif
 +
 diff --git a/clang/include/clang/Sema/Sema.h b/clang/include/clang/Sema/Sema.h
-index e6c63fd9c01..a9aa18a1886 100644
+index e6c63fd9c015..a9aa18a1886f 100644
 --- a/clang/include/clang/Sema/Sema.h
 +++ b/clang/include/clang/Sema/Sema.h
 @@ -9595,13 +9595,14 @@ public:
@@ -1254,7 +1254,7 @@ index e6c63fd9c01..a9aa18a1886 100644
    enum CheckedConversionKind {
      /// An implicit conversion.
 diff --git a/clang/lib/AST/OpenMPClause.cpp b/clang/lib/AST/OpenMPClause.cpp
-index 9d8a7ebc302..e687eb3bfd3 100644
+index 9d8a7ebc3023..e687eb3bfd3e 100644
 --- a/clang/lib/AST/OpenMPClause.cpp
 +++ b/clang/lib/AST/OpenMPClause.cpp
 @@ -127,6 +127,7 @@ const OMPClauseWithPreInit *OMPClauseWithPreInit::get(const OMPClause *C) {
@@ -1319,7 +1319,7 @@ index 9d8a7ebc302..e687eb3bfd3 100644
 +  }
 +}
 diff --git a/clang/lib/AST/StmtProfile.cpp b/clang/lib/AST/StmtProfile.cpp
-index f92c3dc60ba..8966b4d52eb 100644
+index f92c3dc60ba5..8966b4d52eb8 100644
 --- a/clang/lib/AST/StmtProfile.cpp
 +++ b/clang/lib/AST/StmtProfile.cpp
 @@ -765,6 +765,11 @@ void OMPClauseProfiler::VisitOMPIsDevicePtrClause(
@@ -1335,7 +1335,7 @@ index f92c3dc60ba..8966b4d52eb 100644
  
  void
 diff --git a/clang/lib/Basic/OpenMPKinds.cpp b/clang/lib/Basic/OpenMPKinds.cpp
-index 82e193efef3..67bf7748a22 100644
+index 82e193efef32..67bf7748a221 100644
 --- a/clang/lib/Basic/OpenMPKinds.cpp
 +++ b/clang/lib/Basic/OpenMPKinds.cpp
 @@ -145,6 +145,11 @@ unsigned clang::getOpenMPSimpleClauseType(OpenMPClauseKind Kind,
@@ -1359,7 +1359,7 @@ index 82e193efef3..67bf7748a22 100644
    }
    llvm_unreachable("Invalid OpenMP simple clause kind");
 diff --git a/clang/lib/Basic/Targets/RISCV.cpp b/clang/lib/Basic/Targets/RISCV.cpp
-index 930b825e94d..e9def4fcbfd 100644
+index 930b825e94d2..e9def4fcbfd5 100644
 --- a/clang/lib/Basic/Targets/RISCV.cpp
 +++ b/clang/lib/Basic/Targets/RISCV.cpp
 @@ -72,6 +72,8 @@ void RISCVTargetInfo::getTargetDefines(const LangOptions &Opts,
@@ -1374,7 +1374,7 @@ index 930b825e94d..e9def4fcbfd 100644
 diff --git a/clang/lib/CodeGen/BackendUtil.cpp b/clang/lib/CodeGen/BackendUtil.cpp
 old mode 100644
 new mode 100755
-index 497652e85b4..768e8946f89
+index 497652e85b47..768e8946f89e
 --- a/clang/lib/CodeGen/BackendUtil.cpp
 +++ b/clang/lib/CodeGen/BackendUtil.cpp
 @@ -18,6 +18,7 @@
@@ -1782,7 +1782,7 @@ index 497652e85b4..768e8946f89
  // __LLVM,__bitcode section.
  void clang::EmbedBitcode(llvm::Module *M, const CodeGenOptions &CGOpts,
 diff --git a/clang/lib/CodeGen/CGOpenMPRuntime.cpp b/clang/lib/CodeGen/CGOpenMPRuntime.cpp
-index 27e7175da84..1efea1c4944 100644
+index 27e7175da841..1efea1c4944a 100644
 --- a/clang/lib/CodeGen/CGOpenMPRuntime.cpp
 +++ b/clang/lib/CodeGen/CGOpenMPRuntime.cpp
 @@ -535,6 +535,7 @@ enum OpenMPSchedType {
@@ -1803,7 +1803,7 @@ index 27e7175da84..1efea1c4944 100644
      assert(!Chunked && "chunk was specified but schedule kind not known");
      return Ordered ? OMP_ord_static : OMP_sch_static;
 diff --git a/clang/lib/CodeGen/CGStmt.cpp b/clang/lib/CodeGen/CGStmt.cpp
-index 40ab79509f9..a6d0447f899 100644
+index 40ab79509f98..a6d0447f8992 100644
 --- a/clang/lib/CodeGen/CGStmt.cpp
 +++ b/clang/lib/CodeGen/CGStmt.cpp
 @@ -17,6 +17,7 @@
@@ -1959,7 +1959,7 @@ index 40ab79509f9..a6d0447f899 100644
    }
  
 diff --git a/clang/lib/CodeGen/CGStmtOpenMP.cpp b/clang/lib/CodeGen/CGStmtOpenMP.cpp
-index e8fbca5108a..36c9b8cbe9d 100644
+index e8fbca5108ad..36c9b8cbe9d6 100644
 --- a/clang/lib/CodeGen/CGStmtOpenMP.cpp
 +++ b/clang/lib/CodeGen/CGStmtOpenMP.cpp
 @@ -18,6 +18,7 @@
@@ -2158,7 +2158,7 @@ index e8fbca5108a..36c9b8cbe9d 100644
    }
  }
 diff --git a/clang/lib/CodeGen/CMakeLists.txt b/clang/lib/CodeGen/CMakeLists.txt
-index 6d1f33b8924..abe5086201e 100644
+index 6d1f33b89247..abe5086201ee 100644
 --- a/clang/lib/CodeGen/CMakeLists.txt
 +++ b/clang/lib/CodeGen/CMakeLists.txt
 @@ -90,6 +90,8 @@ add_clang_library(clangCodeGen
@@ -2171,7 +2171,7 @@ index 6d1f33b8924..abe5086201e 100644
    SwiftCallingConv.cpp
    TargetInfo.cpp
 diff --git a/clang/lib/CodeGen/CodeGenAction.cpp b/clang/lib/CodeGen/CodeGenAction.cpp
-index 0ae9ea427d6..e90376a9c30 100644
+index 0ae9ea427d65..e90376a9c301 100644
 --- a/clang/lib/CodeGen/CodeGenAction.cpp
 +++ b/clang/lib/CodeGen/CodeGenAction.cpp
 @@ -19,6 +19,7 @@
@@ -2624,7 +2624,7 @@ index 0ae9ea427d6..e90376a9c30 100644
 +  this->ASTFrontendAction::ExecuteAction();
 +}
 diff --git a/clang/lib/CodeGen/CodeGenFunction.h b/clang/lib/CodeGen/CodeGenFunction.h
-index c3060d1fb35..907ab7ecab2 100644
+index c3060d1fb351..907ab7ecab2a 100644
 --- a/clang/lib/CodeGen/CodeGenFunction.h
 +++ b/clang/lib/CodeGen/CodeGenFunction.h
 @@ -564,6 +564,15 @@ public:
@@ -2673,7 +2673,7 @@ index c3060d1fb35..907ab7ecab2 100644
    typedef const llvm::function_ref<void(CodeGenFunction & /*CGF*/,
                                          llvm::Function * /*OutlinedFn*/,
 diff --git a/clang/lib/CodeGen/ObjectFilePCHContainerOperations.cpp b/clang/lib/CodeGen/ObjectFilePCHContainerOperations.cpp
-index 15a2ab99fda..0bb6c48f5f6 100644
+index 15a2ab99fdac..0bb6c48f5f6d 100644
 --- a/clang/lib/CodeGen/ObjectFilePCHContainerOperations.cpp
 +++ b/clang/lib/CodeGen/ObjectFilePCHContainerOperations.cpp
 @@ -297,7 +297,7 @@ public:
@@ -2696,7 +2696,7 @@ index 15a2ab99fda..0bb6c48f5f6 100644
      llvm::SmallVector<char, 0> Empty;
 diff --git a/clang/lib/CodeGen/PopcornUtil.cpp b/clang/lib/CodeGen/PopcornUtil.cpp
 new file mode 100644
-index 00000000000..f09a444ab42
+index 000000000000..f09a444ab420
 --- /dev/null
 +++ b/clang/lib/CodeGen/PopcornUtil.cpp
 @@ -0,0 +1,115 @@
@@ -2817,7 +2817,7 @@ index 00000000000..f09a444ab42
 +
 diff --git a/clang/lib/CodeGen/PrefetchBuilder.cpp b/clang/lib/CodeGen/PrefetchBuilder.cpp
 new file mode 100644
-index 00000000000..401c75780d3
+index 000000000000..401c75780d35
 --- /dev/null
 +++ b/clang/lib/CodeGen/PrefetchBuilder.cpp
 @@ -0,0 +1,114 @@
@@ -2936,7 +2936,7 @@ index 00000000000..401c75780d3
 +}
 +
 diff --git a/clang/lib/Driver/Driver.cpp b/clang/lib/Driver/Driver.cpp
-index a9a273529b4..6163f3ed373 100644
+index a9a273529b46..6163f3ed373b 100644
 --- a/clang/lib/Driver/Driver.cpp
 +++ b/clang/lib/Driver/Driver.cpp
 @@ -1048,6 +1048,8 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
@@ -2965,7 +2965,7 @@ index a9a273529b4..6163f3ed373 100644
  
    // Allow the discovery of tools prefixed with LLVM's default target triple.
 diff --git a/clang/lib/Driver/ToolChains/Arch/RISCV.cpp b/clang/lib/Driver/ToolChains/Arch/RISCV.cpp
-index b6768de4d29..98aae88ac17 100644
+index b6768de4d299..98aae88ac172 100644
 --- a/clang/lib/Driver/ToolChains/Arch/RISCV.cpp
 +++ b/clang/lib/Driver/ToolChains/Arch/RISCV.cpp
 @@ -191,9 +191,16 @@ static void getExtensionFeatures(const Driver &D,
@@ -3007,7 +3007,7 @@ index b6768de4d29..98aae88ac17 100644
 +  return Triple.getArch() == llvm::Triple::riscv32 ? "ilp32" : "lp64d";
  }
 diff --git a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
-index dd461a1976d..ab3a5214144 100644
+index dd461a1976d9..ab3a5214144f 100644
 --- a/clang/lib/Driver/ToolChains/Clang.cpp
 +++ b/clang/lib/Driver/ToolChains/Clang.cpp
 @@ -1862,7 +1862,8 @@ void Clang::AddRISCVTargetArgs(const ArgList &Args,
@@ -3080,7 +3080,7 @@ index dd461a1976d..ab3a5214144 100644
    // CompileJobAction, use -disable-llvm-passes to get pristine IR generated
    // by the frontend.
 diff --git a/clang/lib/Frontend/CompilerInvocation.cpp b/clang/lib/Frontend/CompilerInvocation.cpp
-index bc54e38a1a6..911d08adf04 100644
+index bc54e38a1a63..911d08adf04d 100644
 --- a/clang/lib/Frontend/CompilerInvocation.cpp
 +++ b/clang/lib/Frontend/CompilerInvocation.cpp
 @@ -638,21 +638,12 @@ static void setPGOUseInstrumentor(CodeGenOptions &Opts,
@@ -3206,7 +3206,7 @@ index bc54e38a1a6..911d08adf04 100644
                          Res.getFileSystemOpts().WorkingDir);
    llvm::Triple T(Res.getTargetOpts().Triple);
 diff --git a/clang/lib/FrontendTool/ExecuteCompilerInvocation.cpp b/clang/lib/FrontendTool/ExecuteCompilerInvocation.cpp
-index 69e773658c5..944eefd967e 100644
+index 69e773658c5c..944eefd967e1 100644
 --- a/clang/lib/FrontendTool/ExecuteCompilerInvocation.cpp
 +++ b/clang/lib/FrontendTool/ExecuteCompilerInvocation.cpp
 @@ -56,6 +56,7 @@ CreateFrontendBaseAction(CompilerInstance &CI) {
@@ -3218,7 +3218,7 @@ index 69e773658c5..944eefd967e 100644
    case GenerateModule:
      return llvm::make_unique<GenerateModuleFromModuleMapAction>();
 diff --git a/clang/lib/Parse/CMakeLists.txt b/clang/lib/Parse/CMakeLists.txt
-index b868696eb6b..241be63f028 100644
+index b868696eb6bb..241be63f028c 100644
 --- a/clang/lib/Parse/CMakeLists.txt
 +++ b/clang/lib/Parse/CMakeLists.txt
 @@ -23,6 +23,7 @@ add_clang_library(clangParse
@@ -3230,7 +3230,7 @@ index b868696eb6b..241be63f028 100644
    clangLex
    clangSema
 diff --git a/clang/lib/Parse/ParseOpenMP.cpp b/clang/lib/Parse/ParseOpenMP.cpp
-index 52a68f6d693..d4ccffd59a2 100644
+index 52a68f6d6935..d4ccffd59a22 100644
 --- a/clang/lib/Parse/ParseOpenMP.cpp
 +++ b/clang/lib/Parse/ParseOpenMP.cpp
 @@ -11,6 +11,7 @@
@@ -3476,7 +3476,7 @@ index 52a68f6d693..d4ccffd59a2 100644
  }
  
 diff --git a/clang/lib/Parse/ParsePragma.cpp b/clang/lib/Parse/ParsePragma.cpp
-index f81ecc738c2..59a59f07167 100644
+index f81ecc738c28..59a59f071670 100644
 --- a/clang/lib/Parse/ParsePragma.cpp
 +++ b/clang/lib/Parse/ParsePragma.cpp
 @@ -262,6 +262,23 @@ struct PragmaAttributeHandler : public PragmaHandler {
@@ -3718,7 +3718,7 @@ index f81ecc738c2..59a59f07167 100644
 +}
 +
 diff --git a/clang/lib/Parse/ParseStmt.cpp b/clang/lib/Parse/ParseStmt.cpp
-index bf04253ab7f..61c891b3cf6 100644
+index bf04253ab7fd..61c891b3cf6d 100644
 --- a/clang/lib/Parse/ParseStmt.cpp
 +++ b/clang/lib/Parse/ParseStmt.cpp
 @@ -391,6 +391,9 @@ Retry:
@@ -3732,7 +3732,7 @@ index bf04253ab7f..61c891b3cf6 100644
  
    // If we reached this code, the statement must end in a semicolon.
 diff --git a/clang/lib/Sema/CMakeLists.txt b/clang/lib/Sema/CMakeLists.txt
-index 742343583d1..ab27697cf2f 100644
+index 742343583d16..ab27697cf2fc 100644
 --- a/clang/lib/Sema/CMakeLists.txt
 +++ b/clang/lib/Sema/CMakeLists.txt
 @@ -23,6 +23,9 @@ add_clang_library(clangSema
@@ -3747,7 +3747,7 @@ index 742343583d1..ab27697cf2f 100644
    Sema.cpp
 diff --git a/clang/lib/Sema/PrefetchAnalysis.cpp b/clang/lib/Sema/PrefetchAnalysis.cpp
 new file mode 100644
-index 00000000000..738ceb7b9bb
+index 000000000000..738ceb7b9bb4
 --- /dev/null
 +++ b/clang/lib/Sema/PrefetchAnalysis.cpp
 @@ -0,0 +1,937 @@
@@ -4690,7 +4690,7 @@ index 00000000000..738ceb7b9bb
 +
 diff --git a/clang/lib/Sema/PrefetchDataflow.cpp b/clang/lib/Sema/PrefetchDataflow.cpp
 new file mode 100644
-index 00000000000..c2f031b114f
+index 000000000000..c2f031b114f5
 --- /dev/null
 +++ b/clang/lib/Sema/PrefetchDataflow.cpp
 @@ -0,0 +1,290 @@
@@ -4986,7 +4986,7 @@ index 00000000000..c2f031b114f
 +
 diff --git a/clang/lib/Sema/PrefetchExprBuilder.cpp b/clang/lib/Sema/PrefetchExprBuilder.cpp
 new file mode 100644
-index 00000000000..ec9be7ca800
+index 000000000000..ec9be7ca8009
 --- /dev/null
 +++ b/clang/lib/Sema/PrefetchExprBuilder.cpp
 @@ -0,0 +1,307 @@
@@ -5298,7 +5298,7 @@ index 00000000000..ec9be7ca800
 +}
 +
 diff --git a/clang/lib/Sema/SemaOpenMP.cpp b/clang/lib/Sema/SemaOpenMP.cpp
-index 4ac87469bf4..3ffa2eb13d4 100644
+index 4ac87469bf44..3ffa2eb13d48 100644
 --- a/clang/lib/Sema/SemaOpenMP.cpp
 +++ b/clang/lib/Sema/SemaOpenMP.cpp
 @@ -4385,6 +4385,7 @@ StmtResult Sema::ActOnOpenMPExecutableDirective(
@@ -5435,7 +5435,7 @@ index 4ac87469bf4..3ffa2eb13d4 100644
 +                                   SecondColonLoc, EndLoc);
 +}
 diff --git a/clang/lib/Sema/TreeTransform.h b/clang/lib/Sema/TreeTransform.h
-index 8df18b5c278..5b5131271f9 100644
+index 8df18b5c2784..5b5131271f9d 100644
 --- a/clang/lib/Sema/TreeTransform.h
 +++ b/clang/lib/Sema/TreeTransform.h
 @@ -9168,6 +9168,14 @@ TreeTransform<Derived>::TransformOMPIsDevicePtrClause(OMPIsDevicePtrClause *C) {
@@ -5454,7 +5454,7 @@ index 8df18b5c278..5b5131271f9 100644
  // Expression transformation
  //===----------------------------------------------------------------------===//
 diff --git a/clang/lib/Serialization/ASTReaderStmt.cpp b/clang/lib/Serialization/ASTReaderStmt.cpp
-index afaaa543bb2..2e3f420ba33 100644
+index afaaa543bb27..2e3f420ba33e 100644
 --- a/clang/lib/Serialization/ASTReaderStmt.cpp
 +++ b/clang/lib/Serialization/ASTReaderStmt.cpp
 @@ -1982,6 +1982,11 @@ void ASTStmtReader::VisitAsTypeExpr(AsTypeExpr *E) {
@@ -5470,7 +5470,7 @@ index afaaa543bb2..2e3f420ba33 100644
  // OpenMP Directives.
  //===----------------------------------------------------------------------===//
 diff --git a/clang/lib/Serialization/ASTWriterStmt.cpp b/clang/lib/Serialization/ASTWriterStmt.cpp
-index 4fbcbaabe74..f3410338227 100644
+index 4fbcbaabe74b..f34103382278 100644
 --- a/clang/lib/Serialization/ASTWriterStmt.cpp
 +++ b/clang/lib/Serialization/ASTWriterStmt.cpp
 @@ -1926,6 +1926,11 @@ void ASTStmtWriter::VisitSEHLeaveStmt(SEHLeaveStmt *S) {
@@ -5486,7 +5486,7 @@ index 4fbcbaabe74..f3410338227 100644
  // OpenMP Directives.
  //===----------------------------------------------------------------------===//
 diff --git a/clang/tools/libclang/CIndex.cpp b/clang/tools/libclang/CIndex.cpp
-index 1dc961f58a2..165c436b341 100644
+index 1dc961f58a2a..165c436b3414 100644
 --- a/clang/tools/libclang/CIndex.cpp
 +++ b/clang/tools/libclang/CIndex.cpp
 @@ -2438,6 +2438,10 @@ void OMPClauseEnqueue::VisitOMPUseDevicePtrClause(const OMPUseDevicePtrClause *C
@@ -5501,7 +5501,7 @@ index 1dc961f58a2..165c436b341 100644
  
  void EnqueueVisitor::EnqueueChildren(const OMPClause *S) {
 diff --git a/llvm/docs/StackMaps.rst b/llvm/docs/StackMaps.rst
-index 2ceb408097a..6f768544df0 100644
+index 2ceb408097a7..6f768544df06 100644
 --- a/llvm/docs/StackMaps.rst
 +++ b/llvm/docs/StackMaps.rst
 @@ -319,7 +319,7 @@ format of this section follows:
@@ -5552,7 +5552,7 @@ index 2ceb408097a..6f768544df0 100644
 +
 diff --git a/llvm/include/llvm/Analysis/LiveValues.h b/llvm/include/llvm/Analysis/LiveValues.h
 new file mode 100644
-index 00000000000..40003d008ce
+index 000000000000..40003d008ce3
 --- /dev/null
 +++ b/llvm/include/llvm/Analysis/LiveValues.h
 @@ -0,0 +1,208 @@
@@ -5766,7 +5766,7 @@ index 00000000000..40003d008ce
 +#endif /* _LIVE_VALUES_H */
 diff --git a/llvm/include/llvm/Analysis/LoopNestingTree.h b/llvm/include/llvm/Analysis/LoopNestingTree.h
 new file mode 100644
-index 00000000000..35995cc1cc4
+index 000000000000..35995cc1cc4a
 --- /dev/null
 +++ b/llvm/include/llvm/Analysis/LoopNestingTree.h
 @@ -0,0 +1,190 @@
@@ -5962,7 +5962,7 @@ index 00000000000..35995cc1cc4
 +#endif /* _LOOP_NESTING_TREE_H */
 diff --git a/llvm/include/llvm/Analysis/LoopPaths.h b/llvm/include/llvm/Analysis/LoopPaths.h
 new file mode 100644
-index 00000000000..352107a48f3
+index 000000000000..352107a48f3c
 --- /dev/null
 +++ b/llvm/include/llvm/Analysis/LoopPaths.h
 @@ -0,0 +1,285 @@
@@ -6252,7 +6252,7 @@ index 00000000000..352107a48f3
 +
 +#endif
 diff --git a/llvm/include/llvm/Analysis/Passes.h b/llvm/include/llvm/Analysis/Passes.h
-index d9c97dff8c6..bfb2210b6b0 100644
+index d9c97dff8c6e..bfb2210b6b01 100644
 --- a/llvm/include/llvm/Analysis/Passes.h
 +++ b/llvm/include/llvm/Analysis/Passes.h
 @@ -103,6 +103,33 @@ namespace llvm {
@@ -6291,7 +6291,7 @@ index d9c97dff8c6..bfb2210b6b0 100644
  #endif
 diff --git a/llvm/include/llvm/Analysis/PopcornUtil.h b/llvm/include/llvm/Analysis/PopcornUtil.h
 new file mode 100644
-index 00000000000..98da5b9ac49
+index 000000000000..98da5b9ac493
 --- /dev/null
 +++ b/llvm/include/llvm/Analysis/PopcornUtil.h
 @@ -0,0 +1,187 @@
@@ -6483,7 +6483,7 @@ index 00000000000..98da5b9ac49
 +
 +#endif
 diff --git a/llvm/include/llvm/CodeGen/AsmPrinter.h b/llvm/include/llvm/CodeGen/AsmPrinter.h
-index d110f8b01cb..24f10115e8a 100644
+index d110f8b01cb5..24f10115e8a3 100644
 --- a/llvm/include/llvm/CodeGen/AsmPrinter.h
 +++ b/llvm/include/llvm/CodeGen/AsmPrinter.h
 @@ -22,6 +22,8 @@
@@ -6550,7 +6550,7 @@ index d110f8b01cb..24f10115e8a 100644
    // Dwarf Emission Helper Routines
    //===------------------------------------------------------------------===//
 diff --git a/llvm/include/llvm/CodeGen/MachineFunction.h b/llvm/include/llvm/CodeGen/MachineFunction.h
-index 60c13468542..176de872b4f 100644
+index 60c13468542a..176de872b4fb 100644
 --- a/llvm/include/llvm/CodeGen/MachineFunction.h
 +++ b/llvm/include/llvm/CodeGen/MachineFunction.h
 @@ -30,6 +30,8 @@
@@ -6637,7 +6637,7 @@ index 60c13468542..176de872b4f 100644
  
  //===--------------------------------------------------------------------===//
 diff --git a/llvm/include/llvm/CodeGen/Passes.h b/llvm/include/llvm/CodeGen/Passes.h
-index d92ee93268e..01bc142484a 100644
+index d92ee93268e7..01bc142484a0 100644
 --- a/llvm/include/llvm/CodeGen/Passes.h
 +++ b/llvm/include/llvm/CodeGen/Passes.h
 @@ -129,6 +129,10 @@ namespace llvm {
@@ -6670,7 +6670,7 @@ index d92ee93268e..01bc142484a 100644
    /// independently of other lanes and splits them into separate virtual
    /// registers.
 diff --git a/llvm/include/llvm/CodeGen/StackMaps.h b/llvm/include/llvm/CodeGen/StackMaps.h
-index d7d88de6f68..02f96cb12c5 100644
+index d7d88de6f682..02f96cb12c5c 100644
 --- a/llvm/include/llvm/CodeGen/StackMaps.h
 +++ b/llvm/include/llvm/CodeGen/StackMaps.h
 @@ -12,6 +12,8 @@
@@ -6919,7 +6919,7 @@ index d7d88de6f68..02f96cb12c5 100644
    void emitConstantPoolEntries(MCStreamer &OS);
 diff --git a/llvm/include/llvm/CodeGen/StackTransformTypes.def b/llvm/include/llvm/CodeGen/StackTransformTypes.def
 new file mode 100644
-index 00000000000..79f2d86cb8a
+index 000000000000..79f2d86cb8af
 --- /dev/null
 +++ b/llvm/include/llvm/CodeGen/StackTransformTypes.def
 @@ -0,0 +1,35 @@
@@ -6960,7 +6960,7 @@ index 00000000000..79f2d86cb8a
 +#endif
 diff --git a/llvm/include/llvm/CodeGen/StackTransformTypes.h b/llvm/include/llvm/CodeGen/StackTransformTypes.h
 new file mode 100644
-index 00000000000..ca765bc956a
+index 000000000000..ca765bc956ae
 --- /dev/null
 +++ b/llvm/include/llvm/CodeGen/StackTransformTypes.h
 @@ -0,0 +1,586 @@
@@ -7551,7 +7551,7 @@ index 00000000000..ca765bc956a
 +
 +#endif
 diff --git a/llvm/include/llvm/CodeGen/TargetFrameLowering.h b/llvm/include/llvm/CodeGen/TargetFrameLowering.h
-index 878c9ffd2b5..2ea9c0dedea 100644
+index 878c9ffd2b51..2ea9c0dedea1 100644
 --- a/llvm/include/llvm/CodeGen/TargetFrameLowering.h
 +++ b/llvm/include/llvm/CodeGen/TargetFrameLowering.h
 @@ -281,6 +281,14 @@ public:
@@ -7570,7 +7570,7 @@ index 878c9ffd2b5..2ea9c0dedea 100644
    /// TargetRegisterInfo::getCalleeSavedRegs() should actually get saved.
    /// The default implementation checks populates the \p SavedRegs bitset with
 diff --git a/llvm/include/llvm/CodeGen/TargetPassConfig.h b/llvm/include/llvm/CodeGen/TargetPassConfig.h
-index 0bd82aafac3..7d4e38c1713 100644
+index 0bd82aafac37..7d4e38c1713c 100644
 --- a/llvm/include/llvm/CodeGen/TargetPassConfig.h
 +++ b/llvm/include/llvm/CodeGen/TargetPassConfig.h
 @@ -15,6 +15,7 @@
@@ -7645,7 +7645,7 @@ index 0bd82aafac3..7d4e38c1713 100644
    /// representation to the MI representation.
    /// Adds IR based lowering and target specific optimization passes and finally
 diff --git a/llvm/include/llvm/CodeGen/TargetRegisterInfo.h b/llvm/include/llvm/CodeGen/TargetRegisterInfo.h
-index ddbd677b3ea..86248592c6e 100644
+index ddbd677b3eaa..86248592c6e5 100644
 --- a/llvm/include/llvm/CodeGen/TargetRegisterInfo.h
 +++ b/llvm/include/llvm/CodeGen/TargetRegisterInfo.h
 @@ -1005,6 +1005,17 @@ public:
@@ -7667,7 +7667,7 @@ index ddbd677b3ea..86248592c6e 100644
  
  //===----------------------------------------------------------------------===//
 diff --git a/llvm/include/llvm/CodeGen/TargetSubtargetInfo.h b/llvm/include/llvm/CodeGen/TargetSubtargetInfo.h
-index 037fc3ed324..98819e59a9f 100644
+index 037fc3ed3243..98819e59a9f5 100644
 --- a/llvm/include/llvm/CodeGen/TargetSubtargetInfo.h
 +++ b/llvm/include/llvm/CodeGen/TargetSubtargetInfo.h
 @@ -51,6 +51,7 @@ class TargetLowering;
@@ -7694,7 +7694,7 @@ index 037fc3ed324..98819e59a9f 100644
    /// another variant SchedClass, but repeated invocation must quickly terminate
 diff --git a/llvm/include/llvm/CodeGen/UnwindInfo.h b/llvm/include/llvm/CodeGen/UnwindInfo.h
 new file mode 100644
-index 00000000000..ce9d46166b5
+index 000000000000..ce9d46166b51
 --- /dev/null
 +++ b/llvm/include/llvm/CodeGen/UnwindInfo.h
 @@ -0,0 +1,112 @@
@@ -7811,7 +7811,7 @@ index 00000000000..ce9d46166b5
 +
 +#endif
 diff --git a/llvm/include/llvm/IR/DiagnosticInfo.h b/llvm/include/llvm/IR/DiagnosticInfo.h
-index 373663289db..6e303d9a4a7 100644
+index 373663289dbd..6e303d9a4a75 100644
 --- a/llvm/include/llvm/IR/DiagnosticInfo.h
 +++ b/llvm/include/llvm/IR/DiagnosticInfo.h
 @@ -65,6 +65,7 @@ enum DiagnosticKind {
@@ -7853,7 +7853,7 @@ index 373663289db..6e303d9a4a7 100644
  /// common base class.  This allows returning the result of the insertion
  /// directly by value, e.g. return OptimizationRemarkAnalysis(...) << "blah".
 diff --git a/llvm/include/llvm/InitializePasses.h b/llvm/include/llvm/InitializePasses.h
-index 164d0be2855..af13eb34881 100644
+index 164d0be2855a..af13eb348816 100644
 --- a/llvm/include/llvm/InitializePasses.h
 +++ b/llvm/include/llvm/InitializePasses.h
 @@ -136,7 +136,9 @@ void initializeEarlyMachineLICMPass(PassRegistry&);
@@ -7924,7 +7924,7 @@ index 164d0be2855..af13eb34881 100644
  void initializeStripDeadDebugInfoPass(PassRegistry&);
  void initializeStripDeadPrototypesLegacyPassPass(PassRegistry&);
 diff --git a/llvm/include/llvm/LinkAllPasses.h b/llvm/include/llvm/LinkAllPasses.h
-index 675d179eb22..d4f488430ec 100644
+index 675d179eb22a..d4f488430ec2 100644
 --- a/llvm/include/llvm/LinkAllPasses.h
 +++ b/llvm/include/llvm/LinkAllPasses.h
 @@ -101,6 +101,7 @@ namespace {
@@ -7992,7 +7992,7 @@ index 675d179eb22..d4f488430ec 100644
        (void) llvm::createSpeculativeExecutionPass();
        (void) llvm::createSpeculativeExecutionIfHasBranchDivergencePass();
 diff --git a/llvm/include/llvm/MC/MCObjectFileInfo.h b/llvm/include/llvm/MC/MCObjectFileInfo.h
-index abc87bf2774..22b2c819251 100644
+index abc87bf27748..22b2c819251c 100644
 --- a/llvm/include/llvm/MC/MCObjectFileInfo.h
 +++ b/llvm/include/llvm/MC/MCObjectFileInfo.h
 @@ -153,6 +153,10 @@ protected:
@@ -8017,7 +8017,7 @@ index abc87bf2774..22b2c819251 100644
    MCSection *getFaultMapSection() const { return FaultMapSection; }
    MCSection *getRemarksSection() const { return RemarksSection; }
 diff --git a/llvm/include/llvm/Object/StackMapParser.h b/llvm/include/llvm/Object/StackMapParser.h
-index ed44efbf80b..b80e2ef7c3a 100644
+index ed44efbf80b9..b80e2ef7c3a5 100644
 --- a/llvm/include/llvm/Object/StackMapParser.h
 +++ b/llvm/include/llvm/Object/StackMapParser.h
 @@ -19,7 +19,6 @@
@@ -8131,7 +8131,7 @@ index ed44efbf80b..b80e2ef7c3a 100644
  
    std::size_t getFunctionOffset(unsigned FunctionIndex) const {
 diff --git a/llvm/include/llvm/Target/TargetMachine.h b/llvm/include/llvm/Target/TargetMachine.h
-index cdf9f8bfd5e..be354f14426 100644
+index cdf9f8bfd5ea..be354f14426c 100644
 --- a/llvm/include/llvm/Target/TargetMachine.h
 +++ b/llvm/include/llvm/Target/TargetMachine.h
 @@ -89,6 +89,11 @@ protected: // Can only create subclasses.
@@ -8161,7 +8161,7 @@ index cdf9f8bfd5e..be354f14426 100644
    void setO0WantsFastISel(bool Enable) { O0WantsFastISel = Enable; }
 diff --git a/llvm/include/llvm/Target/TargetValues.h b/llvm/include/llvm/Target/TargetValues.h
 new file mode 100644
-index 00000000000..2a4823f0d54
+index 000000000000..2a4823f0d54f
 --- /dev/null
 +++ b/llvm/include/llvm/Target/TargetValues.h
 @@ -0,0 +1,92 @@
@@ -8258,7 +8258,7 @@ index 00000000000..2a4823f0d54
 +
 +#endif
 diff --git a/llvm/include/llvm/Transforms/Utils.h b/llvm/include/llvm/Transforms/Utils.h
-index 6e03453babf..52ece9075ad 100644
+index 6e03453babf1..52ece9075ad4 100644
 --- a/llvm/include/llvm/Transforms/Utils.h
 +++ b/llvm/include/llvm/Transforms/Utils.h
 @@ -119,6 +119,19 @@ ModulePass *createStripNonLineTableDebugInfoPass();
@@ -8282,7 +8282,7 @@ index 6e03453babf..52ece9075ad 100644
  
  #endif
 diff --git a/llvm/lib/Analysis/Analysis.cpp b/llvm/lib/Analysis/Analysis.cpp
-index d46a8d8e306..cdbe79223a3 100644
+index d46a8d8e306c..cdbe79223a3b 100644
 --- a/llvm/lib/Analysis/Analysis.cpp
 +++ b/llvm/lib/Analysis/Analysis.cpp
 @@ -42,8 +42,10 @@ void llvm::initializeAnalysis(PassRegistry &Registry) {
@@ -8313,7 +8313,7 @@ index d46a8d8e306..cdbe79223a3 100644
    initializeStackSafetyInfoWrapperPassPass(Registry);
    initializeTargetTransformInfoWrapperPassPass(Registry);
 diff --git a/llvm/lib/Analysis/CMakeLists.txt b/llvm/lib/Analysis/CMakeLists.txt
-index dd5d6251414..eca3b23de3b 100644
+index dd5d6251414b..eca3b23de3ba 100644
 --- a/llvm/lib/Analysis/CMakeLists.txt
 +++ b/llvm/lib/Analysis/CMakeLists.txt
 @@ -47,12 +47,15 @@ add_llvm_library(LLVMAnalysis
@@ -8350,7 +8350,7 @@ index dd5d6251414..eca3b23de3b 100644
    SyntheticCountsUtils.cpp
 diff --git a/llvm/lib/Analysis/LiveValues.cpp b/llvm/lib/Analysis/LiveValues.cpp
 new file mode 100644
-index 00000000000..1b562800cdc
+index 000000000000..1b562800cdc0
 --- /dev/null
 +++ b/llvm/lib/Analysis/LiveValues.cpp
 @@ -0,0 +1,385 @@
@@ -8741,7 +8741,7 @@ index 00000000000..1b562800cdc
 +}
 diff --git a/llvm/lib/Analysis/LoopNestingTree.cpp b/llvm/lib/Analysis/LoopNestingTree.cpp
 new file mode 100644
-index 00000000000..af62cdcc435
+index 000000000000..af62cdcc435b
 --- /dev/null
 +++ b/llvm/lib/Analysis/LoopNestingTree.cpp
 @@ -0,0 +1,147 @@
@@ -8894,7 +8894,7 @@ index 00000000000..af62cdcc435
 +}
 diff --git a/llvm/lib/Analysis/LoopPaths.cpp b/llvm/lib/Analysis/LoopPaths.cpp
 new file mode 100644
-index 00000000000..b9020b0891c
+index 000000000000..b9020b0891c0
 --- /dev/null
 +++ b/llvm/lib/Analysis/LoopPaths.cpp
 @@ -0,0 +1,549 @@
@@ -9449,7 +9449,7 @@ index 00000000000..b9020b0891c
 +}
 diff --git a/llvm/lib/Analysis/PopcornCompatibility.cpp b/llvm/lib/Analysis/PopcornCompatibility.cpp
 new file mode 100644
-index 00000000000..398edb29055
+index 000000000000..398edb29055c
 --- /dev/null
 +++ b/llvm/lib/Analysis/PopcornCompatibility.cpp
 @@ -0,0 +1,141 @@
@@ -9596,7 +9596,7 @@ index 00000000000..398edb29055
 +}
 diff --git a/llvm/lib/Analysis/SelectMigrationPoints.cpp b/llvm/lib/Analysis/SelectMigrationPoints.cpp
 new file mode 100644
-index 00000000000..808526a3a80
+index 000000000000..808526a3a802
 --- /dev/null
 +++ b/llvm/lib/Analysis/SelectMigrationPoints.cpp
 @@ -0,0 +1,1838 @@
@@ -11439,7 +11439,7 @@ index 00000000000..808526a3a80
 +  { return new SelectMigrationPoints(); }
 +}
 diff --git a/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp b/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
-index 54f6cc2d557..5886f27d239 100644
+index 54f6cc2d5571..5886f27d239a 100644
 --- a/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
 +++ b/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
 @@ -215,9 +215,10 @@ const TargetLoweringObjectFile &AsmPrinter::getObjFileLowering() const {
@@ -11496,7 +11496,7 @@ index 54f6cc2d557..5886f27d239 100644
    this->MF = &MF;
    // Get the function symbol.
 diff --git a/llvm/lib/CodeGen/CMakeLists.txt b/llvm/lib/CodeGen/CMakeLists.txt
-index 5d8a1382867..29970c8faf8 100644
+index 5d8a13828673..29970c8faf80 100644
 --- a/llvm/lib/CodeGen/CMakeLists.txt
 +++ b/llvm/lib/CodeGen/CMakeLists.txt
 @@ -144,6 +144,8 @@ add_llvm_library(LLVMCodeGen
@@ -11540,7 +11540,7 @@ index 5d8a1382867..29970c8faf8 100644
    intrinsics_gen
    )
 diff --git a/llvm/lib/CodeGen/CodeGen.cpp b/llvm/lib/CodeGen/CodeGen.cpp
-index c37ed57781d..6691a24c820 100644
+index c37ed57781d4..6691a24c8203 100644
 --- a/llvm/lib/CodeGen/CodeGen.cpp
 +++ b/llvm/lib/CodeGen/CodeGen.cpp
 @@ -51,6 +51,7 @@ void llvm::initializeCodeGen(PassRegistry &Registry) {
@@ -11552,7 +11552,7 @@ index c37ed57781d..6691a24c820 100644
    initializeMIRCanonicalizerPass(Registry);
    initializeMachineBlockFrequencyInfoPass(Registry);
 diff --git a/llvm/lib/CodeGen/InlineSpiller.cpp b/llvm/lib/CodeGen/InlineSpiller.cpp
-index 41ae8061a91..b827b60bd5f 100644
+index 41ae8061a917..b827b60bd5f9 100644
 --- a/llvm/lib/CodeGen/InlineSpiller.cpp
 +++ b/llvm/lib/CodeGen/InlineSpiller.cpp
 @@ -77,7 +77,7 @@ static cl::opt<bool> DisableHoisting("disable-spill-hoist", cl::Hidden,
@@ -11575,7 +11575,7 @@ index 41ae8061a91..b827b60bd5f 100644
  
  /// reMaterializeFor - Attempt to rematerialize before MI instead of reloading.
 diff --git a/llvm/lib/CodeGen/LLVMTargetMachine.cpp b/llvm/lib/CodeGen/LLVMTargetMachine.cpp
-index 886ae7e94ad..dd995e7a423 100644
+index 886ae7e94adb..dd995e7a4236 100644
 --- a/llvm/lib/CodeGen/LLVMTargetMachine.cpp
 +++ b/llvm/lib/CodeGen/LLVMTargetMachine.cpp
 @@ -38,6 +38,27 @@ static cl::opt<bool> EnableTrapUnreachable("trap-unreachable",
@@ -11643,7 +11643,7 @@ index 886ae7e94ad..dd995e7a423 100644
  
    if (PassConfig->addISelPasses())
 diff --git a/llvm/lib/CodeGen/MachineFunction.cpp b/llvm/lib/CodeGen/MachineFunction.cpp
-index faae944f591..9fed0e7ee6b 100644
+index faae944f5913..9fed0e7ee6b2 100644
 --- a/llvm/lib/CodeGen/MachineFunction.cpp
 +++ b/llvm/lib/CodeGen/MachineFunction.cpp
 @@ -116,6 +116,15 @@ void MachineFunctionProperties::print(raw_ostream &OS) const {
@@ -11852,7 +11852,7 @@ index faae944f591..9fed0e7ee6b 100644
  
  //===----------------------------------------------------------------------===//
 diff --git a/llvm/lib/CodeGen/MachineInstr.cpp b/llvm/lib/CodeGen/MachineInstr.cpp
-index d81f5bbf78c..8160a27b457 100644
+index d81f5bbf78c5..8160a27b457a 100644
 --- a/llvm/lib/CodeGen/MachineInstr.cpp
 +++ b/llvm/lib/CodeGen/MachineInstr.cpp
 @@ -1754,7 +1754,7 @@ void MachineInstr::print(raw_ostream &OS, ModuleSlotTracker &MST,
@@ -11865,7 +11865,7 @@ index d81f5bbf78c..8160a27b457 100644
        OS << ";";
        HaveSemi = true;
 diff --git a/llvm/lib/CodeGen/MachineVerifier.cpp b/llvm/lib/CodeGen/MachineVerifier.cpp
-index 0ad792ac62c..073092c1bc3 100644
+index 0ad792ac62cf..073092c1bc3c 100644
 --- a/llvm/lib/CodeGen/MachineVerifier.cpp
 +++ b/llvm/lib/CodeGen/MachineVerifier.cpp
 @@ -1481,7 +1481,6 @@ void MachineVerifier::visitMachineInstrBefore(const MachineInstr *MI) {
@@ -11877,7 +11877,7 @@ index 0ad792ac62c..073092c1bc3 100644
      // TODO: verify we have properly encoded deopt arguments
      break;
 diff --git a/llvm/lib/CodeGen/RegAllocFast.cpp b/llvm/lib/CodeGen/RegAllocFast.cpp
-index 2ffa5e389f8..f921952f6f8 100644
+index 2ffa5e389f89..f921952f6f8c 100644
 --- a/llvm/lib/CodeGen/RegAllocFast.cpp
 +++ b/llvm/lib/CodeGen/RegAllocFast.cpp
 @@ -1291,6 +1291,13 @@ void RegAllocFast::allocateBasicBlock(MachineBasicBlock &MBB) {
@@ -11895,7 +11895,7 @@ index 2ffa5e389f8..f921952f6f8 100644
                      << "********** Function: " << MF.getName() << '\n');
    MRI = &MF.getRegInfo();
 diff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp
-index 15ac45c37c6..e0c22362f5f 100644
+index 15ac45c37c66..e0c22362f5f2 100644
 --- a/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp
 +++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp
 @@ -1161,6 +1161,9 @@ bool DAGTypeLegalizer::PromoteIntegerOperand(SDNode *N, unsigned OpNo) {
@@ -11987,7 +11987,7 @@ index 15ac45c37c6..e0c22362f5f 100644
  SDValue DAGTypeLegalizer::PromoteIntRes_EXTRACT_SUBVECTOR(SDNode *N) {
  
 diff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h b/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h
-index 1d489b1b3a3..2241bbf5c02 100644
+index 1d489b1b3a33..2241bbf5c022 100644
 --- a/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h
 +++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h
 @@ -369,6 +369,7 @@ private:
@@ -12007,7 +12007,7 @@ index 1d489b1b3a3..2241bbf5c02 100644
    void IntegerExpandSetCCOperands(SDValue &NewLHS, SDValue &NewRHS,
                                    ISD::CondCode &CCCode, const SDLoc &dl);
 diff --git a/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp b/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp
-index 4120a401b69..a042c9cdfac 100644
+index 4120a401b696..a042c9cdfac8 100644
 --- a/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp
 +++ b/llvm/lib/CodeGen/SelectionDAG/SelectionDAGBuilder.cpp
 @@ -8608,6 +8608,43 @@ void SelectionDAGBuilder::visitStackmap(const CallInst &CI) {
@@ -12114,7 +12114,7 @@ index 4120a401b69..a042c9cdfac 100644
    DAG.setRoot(Chain);
  
 diff --git a/llvm/lib/CodeGen/StackMaps.cpp b/llvm/lib/CodeGen/StackMaps.cpp
-index ae9401b8970..41adb7a5bc0 100644
+index ae9401b89700..41adb7a5bc07 100644
 --- a/llvm/lib/CodeGen/StackMaps.cpp
 +++ b/llvm/lib/CodeGen/StackMaps.cpp
 @@ -15,15 +15,20 @@
@@ -12987,7 +12987,7 @@ index ae9401b8970..41adb7a5bc0 100644
    emitCallsiteEntries(OS);
    OS.AddBlankLine();
 diff --git a/llvm/lib/CodeGen/StackSlotColoring.cpp b/llvm/lib/CodeGen/StackSlotColoring.cpp
-index 99b533e10b8..bc2379888ab 100644
+index 99b533e10b87..bc2379888ab0 100644
 --- a/llvm/lib/CodeGen/StackSlotColoring.cpp
 +++ b/llvm/lib/CodeGen/StackSlotColoring.cpp
 @@ -324,6 +324,7 @@ bool StackSlotColoring::ColorSlots(MachineFunction &MF) {
@@ -13010,7 +13010,7 @@ index 99b533e10b8..bc2379888ab 100644
    for (unsigned i = 0, e = SSIntervals.size(); i != e; ++i) {
 diff --git a/llvm/lib/CodeGen/StackTransformMetadata.cpp b/llvm/lib/CodeGen/StackTransformMetadata.cpp
 new file mode 100644
-index 00000000000..dbc99b55d81
+index 000000000000..dbc99b55d810
 --- /dev/null
 +++ b/llvm/lib/CodeGen/StackTransformMetadata.cpp
 @@ -0,0 +1,1415 @@
@@ -14431,7 +14431,7 @@ index 00000000000..dbc99b55d81
 +}
 diff --git a/llvm/lib/CodeGen/StackTransformTypes.cpp b/llvm/lib/CodeGen/StackTransformTypes.cpp
 new file mode 100644
-index 00000000000..d3e5d2ca3e9
+index 000000000000..d3e5d2ca3e9f
 --- /dev/null
 +++ b/llvm/lib/CodeGen/StackTransformTypes.cpp
 @@ -0,0 +1,303 @@
@@ -14739,7 +14739,7 @@ index 00000000000..d3e5d2ca3e9
 +  return Size;
 +}
 diff --git a/llvm/lib/CodeGen/TargetPassConfig.cpp b/llvm/lib/CodeGen/TargetPassConfig.cpp
-index 36df02692f8..8451bbcd46e 100644
+index 36df02692f86..8451bbcd46e4 100644
 --- a/llvm/lib/CodeGen/TargetPassConfig.cpp
 +++ b/llvm/lib/CodeGen/TargetPassConfig.cpp
 @@ -72,8 +72,11 @@ static cl::opt<bool> DisableEarlyIfConversion("disable-early-ifcvt", cl::Hidden,
@@ -14840,7 +14840,7 @@ index 36df02692f8..8451bbcd46e 100644
  
 diff --git a/llvm/lib/CodeGen/UnwindInfo.cpp b/llvm/lib/CodeGen/UnwindInfo.cpp
 new file mode 100644
-index 00000000000..3efeaffe929
+index 000000000000..3efeaffe9293
 --- /dev/null
 +++ b/llvm/lib/CodeGen/UnwindInfo.cpp
 @@ -0,0 +1,187 @@
@@ -15032,7 +15032,7 @@ index 00000000000..3efeaffe929
 +  }
 +}
 diff --git a/llvm/lib/IR/DiagnosticInfo.cpp b/llvm/lib/IR/DiagnosticInfo.cpp
-index 4a8e3cca349..7c60a52dfef 100644
+index 4a8e3cca3493..7c60a52dfef6 100644
 --- a/llvm/lib/IR/DiagnosticInfo.cpp
 +++ b/llvm/lib/IR/DiagnosticInfo.cpp
 @@ -62,6 +62,11 @@ DiagnosticInfoInlineAsm::DiagnosticInfoInlineAsm(const Instruction &I,
@@ -15048,7 +15048,7 @@ index 4a8e3cca349..7c60a52dfef 100644
    DP << getMsgStr();
    if (getLocCookie())
 diff --git a/llvm/lib/MC/MCObjectFileInfo.cpp b/llvm/lib/MC/MCObjectFileInfo.cpp
-index 9f555abe140..ff2c63ca145 100644
+index 9f555abe1404..ff2c63ca1452 100644
 --- a/llvm/lib/MC/MCObjectFileInfo.cpp
 +++ b/llvm/lib/MC/MCObjectFileInfo.cpp
 @@ -285,6 +285,7 @@ void MCObjectFileInfo::initMachOMCObjectFileInfo(const Triple &T) {
@@ -15077,7 +15077,7 @@ index 9f555abe140..ff2c63ca145 100644
        Ctx->getELFSection(".llvm_stackmaps", ELF::SHT_PROGBITS, ELF::SHF_ALLOC);
  
 diff --git a/llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp b/llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp
-index 094fbd99952..92886bf82c8 100644
+index 094fbd999523..92886bf82c8d 100644
 --- a/llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp
 @@ -40,6 +40,7 @@
@@ -15138,7 +15138,7 @@ index 094fbd99952..92886bf82c8 100644
  
  void AArch64AsmPrinter::EmitLOHs() {
 diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
-index 8c6e5cbd5c1..5128fe91f5b 100644
+index 8c6e5cbd5c13..5128fe91f5b9 100644
 --- a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
 @@ -1536,6 +1536,15 @@ int AArch64FrameLowering::getSEHFrameIndexOffset(const MachineFunction &MF,
@@ -15158,7 +15158,7 @@ index 8c6e5cbd5c1..5128fe91f5b 100644
                                                       int FI, unsigned &FrameReg,
                                                       bool PreferFP,
 diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.h b/llvm/lib/Target/AArch64/AArch64FrameLowering.h
-index 6dbd34b2189..85639765fc1 100644
+index 6dbd34b2189f..85639765fc17 100644
 --- a/llvm/lib/Target/AArch64/AArch64FrameLowering.h
 +++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.h
 @@ -39,6 +39,8 @@ public:
@@ -15171,7 +15171,7 @@ index 6dbd34b2189..85639765fc1 100644
                                   unsigned &FrameReg, bool PreferFP,
                                   bool ForSimm) const;
 diff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
-index 03923878fd5..1666058b57e 100644
+index 03923878fd51..1666058b57ea 100644
 --- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
 @@ -2992,6 +2992,9 @@ SDValue AArch64TargetLowering::LowerOperation(SDValue Op,
@@ -15185,7 +15185,7 @@ index 03923878fd5..1666058b57e 100644
  }
  
 diff --git a/llvm/lib/Target/AArch64/AArch64InstrInfo.td b/llvm/lib/Target/AArch64/AArch64InstrInfo.td
-index 020035c7f6c..0ca808453e0 100644
+index 020035c7f6c3..0ca808453e0b 100644
 --- a/llvm/lib/Target/AArch64/AArch64InstrInfo.td
 +++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.td
 @@ -259,7 +259,7 @@ def AArch64LOADgot       : SDNode<"AArch64ISD::LOADgot", SDTIntUnaryOp>;
@@ -15198,7 +15198,7 @@ index 020035c7f6c..0ca808453e0 100644
                                  SDCallSeqEnd<[ SDTCisVT<0, i32>,
                                                 SDTCisVT<1, i32> ]>,
 diff --git a/llvm/lib/Target/AArch64/AArch64RegisterInfo.cpp b/llvm/lib/Target/AArch64/AArch64RegisterInfo.cpp
-index 6d5a4e3d2f7..d7968b94297 100644
+index 6d5a4e3d2f76..d7968b94297e 100644
 --- a/llvm/lib/Target/AArch64/AArch64RegisterInfo.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64RegisterInfo.cpp
 @@ -285,6 +285,23 @@ AArch64RegisterInfo::getFrameRegister(const MachineFunction &MF) const {
@@ -15226,7 +15226,7 @@ index 6d5a4e3d2f7..d7968b94297 100644
      const MachineFunction &MF) const {
    return true;
 diff --git a/llvm/lib/Target/AArch64/AArch64RegisterInfo.h b/llvm/lib/Target/AArch64/AArch64RegisterInfo.h
-index 2c3f82c530d..19daadd8cfd 100644
+index 2c3f82c530d8..19daadd8cfdc 100644
 --- a/llvm/lib/Target/AArch64/AArch64RegisterInfo.h
 +++ b/llvm/lib/Target/AArch64/AArch64RegisterInfo.h
 @@ -115,6 +115,9 @@ public:
@@ -15240,7 +15240,7 @@ index 2c3f82c530d..19daadd8cfd 100644
                                 MachineFunction &MF) const override;
  
 diff --git a/llvm/lib/Target/AArch64/AArch64Subtarget.h b/llvm/lib/Target/AArch64/AArch64Subtarget.h
-index 0c84cfb8329..b490f7943d1 100644
+index 0c84cfb8329a..b490f7943d1b 100644
 --- a/llvm/lib/Target/AArch64/AArch64Subtarget.h
 +++ b/llvm/lib/Target/AArch64/AArch64Subtarget.h
 @@ -18,6 +18,7 @@
@@ -15270,7 +15270,7 @@ index 0c84cfb8329..b490f7943d1 100644
    const InstructionSelector *getInstructionSelector() const override;
    const LegalizerInfo *getLegalizerInfo() const override;
 diff --git a/llvm/lib/Target/AArch64/AArch64TargetMachine.cpp b/llvm/lib/Target/AArch64/AArch64TargetMachine.cpp
-index 86546148049..69f81837880 100644
+index 865461480499..69f818378808 100644
 --- a/llvm/lib/Target/AArch64/AArch64TargetMachine.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64TargetMachine.cpp
 @@ -413,7 +413,9 @@ void AArch64PassConfig::addIRPasses() {
@@ -15318,7 +15318,7 @@ index 86546148049..69f81837880 100644
        EnableGlobalMerge == cl::BOU_TRUE) {
      bool OnlyOptimizeForSize = (TM->getOptLevel() < CodeGenOpt::Aggressive) &&
 diff --git a/llvm/lib/Target/AArch64/AArch64TargetTransformInfo.cpp b/llvm/lib/Target/AArch64/AArch64TargetTransformInfo.cpp
-index 301bf72d523..1bb25b53298 100644
+index 301bf72d5239..1bb25b53298d 100644
 --- a/llvm/lib/Target/AArch64/AArch64TargetTransformInfo.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64TargetTransformInfo.cpp
 @@ -871,6 +871,9 @@ bool AArch64TTIImpl::shouldConsiderAddressTypePromotion(
@@ -15333,7 +15333,7 @@ index 301bf72d523..1bb25b53298 100644
    if (I.getType() != ConsideredSExtType)
 diff --git a/llvm/lib/Target/AArch64/AArch64Values.cpp b/llvm/lib/Target/AArch64/AArch64Values.cpp
 new file mode 100644
-index 00000000000..07d2d5f0710
+index 000000000000..07d2d5f07104
 --- /dev/null
 +++ b/llvm/lib/Target/AArch64/AArch64Values.cpp
 @@ -0,0 +1,252 @@
@@ -15591,7 +15591,7 @@ index 00000000000..07d2d5f0710
 +}
 diff --git a/llvm/lib/Target/AArch64/AArch64Values.h b/llvm/lib/Target/AArch64/AArch64Values.h
 new file mode 100644
-index 00000000000..faf859ac338
+index 000000000000..faf859ac3389
 --- /dev/null
 +++ b/llvm/lib/Target/AArch64/AArch64Values.h
 @@ -0,0 +1,28 @@
@@ -15624,7 +15624,7 @@ index 00000000000..faf859ac338
 +
 +}
 diff --git a/llvm/lib/Target/AArch64/CMakeLists.txt b/llvm/lib/Target/AArch64/CMakeLists.txt
-index 3154ed03bd4..b8abcdb532f 100644
+index 3154ed03bd46..b8abcdb532f5 100644
 --- a/llvm/lib/Target/AArch64/CMakeLists.txt
 +++ b/llvm/lib/Target/AArch64/CMakeLists.txt
 @@ -62,6 +62,7 @@ add_llvm_target(AArch64CodeGen
@@ -15636,7 +15636,7 @@ index 3154ed03bd4..b8abcdb532f 100644
    DEPENDS
    intrinsics_gen
 diff --git a/llvm/lib/Target/CMakeLists.txt b/llvm/lib/Target/CMakeLists.txt
-index 1e6abfacb79..e6c2c6958e5 100644
+index 1e6abfacb792..e6c2c6958e5d 100644
 --- a/llvm/lib/Target/CMakeLists.txt
 +++ b/llvm/lib/Target/CMakeLists.txt
 @@ -8,6 +8,7 @@ add_llvm_library(LLVMTarget
@@ -15648,7 +15648,7 @@ index 1e6abfacb79..e6c2c6958e5 100644
    ADDITIONAL_HEADER_DIRS
    ${LLVM_MAIN_INCLUDE_DIR}/llvm/Target
 diff --git a/llvm/lib/Target/RISCV/CMakeLists.txt b/llvm/lib/Target/RISCV/CMakeLists.txt
-index 5cdaf344703..97dadd7efab 100644
+index 5cdaf344703b..97dadd7efabf 100644
 --- a/llvm/lib/Target/RISCV/CMakeLists.txt
 +++ b/llvm/lib/Target/RISCV/CMakeLists.txt
 @@ -28,6 +28,7 @@ add_llvm_target(RISCVCodeGen
@@ -15660,7 +15660,7 @@ index 5cdaf344703..97dadd7efab 100644
  
  add_subdirectory(AsmParser)
 diff --git a/llvm/lib/Target/RISCV/RISCVAsmPrinter.cpp b/llvm/lib/Target/RISCV/RISCVAsmPrinter.cpp
-index 57631dcb511..6be797deec7 100644
+index 57631dcb5115..6be797deec79 100644
 --- a/llvm/lib/Target/RISCV/RISCVAsmPrinter.cpp
 +++ b/llvm/lib/Target/RISCV/RISCVAsmPrinter.cpp
 @@ -21,8 +21,11 @@
@@ -15768,7 +15768,7 @@ index 57631dcb511..6be797deec7 100644
  extern "C" void LLVMInitializeRISCVAsmPrinter() {
    RegisterAsmPrinter<RISCVAsmPrinter> X(getTheRISCV32Target());
 diff --git a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
-index bbaa16c0863..4a197c422a2 100644
+index bbaa16c08634..4a197c422a2a 100644
 --- a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
 +++ b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
 @@ -26,9 +26,10 @@ bool RISCVFrameLowering::hasFP(const MachineFunction &MF) const {
@@ -15834,7 +15834,7 @@ index bbaa16c0863..4a197c422a2 100644
                                                BitVector &SavedRegs,
                                                RegScavenger *RS) const {
 diff --git a/llvm/lib/Target/RISCV/RISCVFrameLowering.h b/llvm/lib/Target/RISCV/RISCVFrameLowering.h
-index 0e045c3ff85..6cf2c93ecc1 100644
+index 0e045c3ff853..6cf2c93ecc1c 100644
 --- a/llvm/lib/Target/RISCV/RISCVFrameLowering.h
 +++ b/llvm/lib/Target/RISCV/RISCVFrameLowering.h
 @@ -31,6 +31,8 @@ public:
@@ -15847,7 +15847,7 @@ index 0e045c3ff85..6cf2c93ecc1 100644
    void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs,
                              RegScavenger *RS) const override;
 diff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
-index 2b0f64fa6db..bb8ba331c33 100644
+index 2b0f64fa6db6..bb8ba331c338 100644
 --- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
 +++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
 @@ -392,6 +392,8 @@ SDValue RISCVTargetLowering::LowerOperation(SDValue Op,
@@ -15869,7 +15869,7 @@ index 2b0f64fa6db..bb8ba331c33 100644
  }
  
 diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp b/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp
-index 99c8d2ef73d..f3e0386ba87 100644
+index 99c8d2ef73de..f3e0386ba879 100644
 --- a/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp
 +++ b/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp
 @@ -20,6 +20,7 @@
@@ -15893,7 +15893,7 @@ index 99c8d2ef73d..f3e0386ba87 100644
  }
  
 diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfo.td b/llvm/lib/Target/RISCV/RISCVInstrInfo.td
-index 69bde15f121..1c4badc6d81 100644
+index 69bde15f1218..1c4badc6d810 100644
 --- a/llvm/lib/Target/RISCV/RISCVInstrInfo.td
 +++ b/llvm/lib/Target/RISCV/RISCVInstrInfo.td
 @@ -28,7 +28,7 @@ def SDT_RISCVSelectCC : SDTypeProfile<1, 5, [SDTCisSameAs<1, 2>,
@@ -15906,7 +15906,7 @@ index 69bde15f121..1c4badc6d81 100644
                             [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
  
 diff --git a/llvm/lib/Target/RISCV/RISCVRegisterInfo.cpp b/llvm/lib/Target/RISCV/RISCVRegisterInfo.cpp
-index e6a126e3e51..5f31eff6858 100644
+index e6a126e3e513..5f31eff68587 100644
 --- a/llvm/lib/Target/RISCV/RISCVRegisterInfo.cpp
 +++ b/llvm/lib/Target/RISCV/RISCVRegisterInfo.cpp
 @@ -105,6 +105,15 @@ void RISCVRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
@@ -15950,7 +15950,7 @@ index e6a126e3e51..5f31eff6858 100644
  RISCVRegisterInfo::getCallPreservedMask(const MachineFunction & MF,
                                          CallingConv::ID /*CC*/) const {
 diff --git a/llvm/lib/Target/RISCV/RISCVRegisterInfo.h b/llvm/lib/Target/RISCV/RISCVRegisterInfo.h
-index 56a50fe6ddc..c628f7844b6 100644
+index 56a50fe6ddc0..c628f7844b6f 100644
 --- a/llvm/lib/Target/RISCV/RISCVRegisterInfo.h
 +++ b/llvm/lib/Target/RISCV/RISCVRegisterInfo.h
 @@ -41,6 +41,9 @@ struct RISCVRegisterInfo : public RISCVGenRegisterInfo {
@@ -15964,7 +15964,7 @@ index 56a50fe6ddc..c628f7844b6 100644
      return true;
    }
 diff --git a/llvm/lib/Target/RISCV/RISCVSubtarget.h b/llvm/lib/Target/RISCV/RISCVSubtarget.h
-index 106ff49f021..cf6f0002df6 100644
+index 106ff49f021a..cf6f0002df62 100644
 --- a/llvm/lib/Target/RISCV/RISCVSubtarget.h
 +++ b/llvm/lib/Target/RISCV/RISCVSubtarget.h
 @@ -16,6 +16,7 @@
@@ -15994,7 +15994,7 @@ index 106ff49f021..cf6f0002df6 100644
    bool hasStdExtA() const { return HasStdExtA; }
    bool hasStdExtF() const { return HasStdExtF; }
 diff --git a/llvm/lib/Target/RISCV/RISCVTargetObjectFile.cpp b/llvm/lib/Target/RISCV/RISCVTargetObjectFile.cpp
-index bbd45c970d3..df182d4c6f7 100644
+index bbd45c970d3d..df182d4c6f7e 100644
 --- a/llvm/lib/Target/RISCV/RISCVTargetObjectFile.cpp
 +++ b/llvm/lib/Target/RISCV/RISCVTargetObjectFile.cpp
 @@ -29,6 +29,9 @@ void RISCVELFTargetObjectFile::Initialize(MCContext &Ctx,
@@ -16056,7 +16056,7 @@ index bbd45c970d3..df182d4c6f7 100644
    return TargetLoweringObjectFileELF::getSectionForConstant(DL, Kind, C, Align);
 diff --git a/llvm/lib/Target/RISCV/RISCVValues.cpp b/llvm/lib/Target/RISCV/RISCVValues.cpp
 new file mode 100644
-index 00000000000..a0f4ca46761
+index 000000000000..a0f4ca46761f
 --- /dev/null
 +++ b/llvm/lib/Target/RISCV/RISCVValues.cpp
 @@ -0,0 +1,175 @@
@@ -16237,7 +16237,7 @@ index 00000000000..a0f4ca46761
 +}
 diff --git a/llvm/lib/Target/RISCV/RISCVValues.h b/llvm/lib/Target/RISCV/RISCVValues.h
 new file mode 100644
-index 00000000000..1b29629ce03
+index 000000000000..1b29629ce039
 --- /dev/null
 +++ b/llvm/lib/Target/RISCV/RISCVValues.h
 @@ -0,0 +1,28 @@
@@ -16271,7 +16271,7 @@ index 00000000000..1b29629ce03
 +}
 diff --git a/llvm/lib/Target/TargetValues.cpp b/llvm/lib/Target/TargetValues.cpp
 new file mode 100644
-index 00000000000..9d6e8c73b15
+index 000000000000..9d6e8c73b151
 --- /dev/null
 +++ b/llvm/lib/Target/TargetValues.cpp
 @@ -0,0 +1,40 @@
@@ -16316,7 +16316,7 @@ index 00000000000..9d6e8c73b15
 +  return false;
 +}
 diff --git a/llvm/lib/Target/X86/CMakeLists.txt b/llvm/lib/Target/X86/CMakeLists.txt
-index ed34a59df4a..7d1fe41b3de 100644
+index ed34a59df4ad..7d1fe41b3de8 100644
 --- a/llvm/lib/Target/X86/CMakeLists.txt
 +++ b/llvm/lib/Target/X86/CMakeLists.txt
 @@ -68,6 +68,7 @@ set(sources
@@ -16328,7 +16328,7 @@ index ed34a59df4a..7d1fe41b3de 100644
  
  add_llvm_target(X86CodeGen ${sources})
 diff --git a/llvm/lib/Target/X86/X86AsmPrinter.cpp b/llvm/lib/Target/X86/X86AsmPrinter.cpp
-index 80120722e0e..57bc3ebd406 100644
+index 80120722e0e6..57bc3ebd406e 100644
 --- a/llvm/lib/Target/X86/X86AsmPrinter.cpp
 +++ b/llvm/lib/Target/X86/X86AsmPrinter.cpp
 @@ -24,6 +24,7 @@
@@ -16390,7 +16390,7 @@ index 80120722e0e..57bc3ebd406 100644
  }
  
 diff --git a/llvm/lib/Target/X86/X86AsmPrinter.h b/llvm/lib/Target/X86/X86AsmPrinter.h
-index a011310970b..594efa456b1 100644
+index a011310970b3..594efa456b16 100644
 --- a/llvm/lib/Target/X86/X86AsmPrinter.h
 +++ b/llvm/lib/Target/X86/X86AsmPrinter.h
 @@ -13,6 +13,7 @@
@@ -16410,7 +16410,7 @@ index a011310970b..594efa456b1 100644
    std::unique_ptr<MCCodeEmitter> CodeEmitter;
    bool EmitFPOData = false;
 diff --git a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp
-index 920cdd7e625..15d08eef805 100644
+index 920cdd7e625e..15d08eef8054 100644
 --- a/llvm/lib/Target/X86/X86ISelLowering.cpp
 +++ b/llvm/lib/Target/X86/X86ISelLowering.cpp
 @@ -27301,6 +27301,8 @@ SDValue X86TargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
@@ -16423,7 +16423,7 @@ index 920cdd7e625..15d08eef805 100644
  }
  
 diff --git a/llvm/lib/Target/X86/X86InstrInfo.td b/llvm/lib/Target/X86/X86InstrInfo.td
-index 8e05dd8ec5c..1a2d95d27d4 100644
+index 8e05dd8ec5c1..1a2d95d27d4e 100644
 --- a/llvm/lib/Target/X86/X86InstrInfo.td
 +++ b/llvm/lib/Target/X86/X86InstrInfo.td
 @@ -196,7 +196,7 @@ def X86vaarg64 :
@@ -16436,7 +16436,7 @@ index 8e05dd8ec5c..1a2d95d27d4 100644
                   SDNode<"ISD::CALLSEQ_END",   SDT_X86CallSeqEnd,
                          [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 diff --git a/llvm/lib/Target/X86/X86RegisterInfo.cpp b/llvm/lib/Target/X86/X86RegisterInfo.cpp
-index c8966dfffa0..68191fb476b 100644
+index c8966dfffa0c..68191fb476b5 100644
 --- a/llvm/lib/Target/X86/X86RegisterInfo.cpp
 +++ b/llvm/lib/Target/X86/X86RegisterInfo.cpp
 @@ -804,3 +804,10 @@ X86RegisterInfo::getPtrSizedStackRegister(const MachineFunction &MF) const {
@@ -16451,7 +16451,7 @@ index c8966dfffa0..68191fb476b 100644
 +  return TFL->getFrameIndexReference(MF, X86FI->getRAIndex(), BaseReg);
 +}
 diff --git a/llvm/lib/Target/X86/X86RegisterInfo.h b/llvm/lib/Target/X86/X86RegisterInfo.h
-index b8292089806..bab19c3bac5 100644
+index b82920898069..bab19c3bac57 100644
 --- a/llvm/lib/Target/X86/X86RegisterInfo.h
 +++ b/llvm/lib/Target/X86/X86RegisterInfo.h
 @@ -145,6 +145,9 @@ public:
@@ -16465,7 +16465,7 @@ index b8292089806..bab19c3bac5 100644
  
  } // End llvm namespace
 diff --git a/llvm/lib/Target/X86/X86Subtarget.h b/llvm/lib/Target/X86/X86Subtarget.h
-index 24ccc9cb784..1bbd394e260 100644
+index 24ccc9cb7843..1bbd394e260a 100644
 --- a/llvm/lib/Target/X86/X86Subtarget.h
 +++ b/llvm/lib/Target/X86/X86Subtarget.h
 @@ -17,6 +17,7 @@
@@ -16495,7 +16495,7 @@ index 24ccc9cb784..1bbd394e260 100644
    /// stack frame on entry to the function and which must be maintained by every
 diff --git a/llvm/lib/Target/X86/X86Values.cpp b/llvm/lib/Target/X86/X86Values.cpp
 new file mode 100644
-index 00000000000..b37c5ba18ab
+index 000000000000..b37c5ba18abd
 --- /dev/null
 +++ b/llvm/lib/Target/X86/X86Values.cpp
 @@ -0,0 +1,211 @@
@@ -16712,7 +16712,7 @@ index 00000000000..b37c5ba18ab
 +}
 diff --git a/llvm/lib/Target/X86/X86Values.h b/llvm/lib/Target/X86/X86Values.h
 new file mode 100644
-index 00000000000..8a76e00e16e
+index 000000000000..8a76e00e16ec
 --- /dev/null
 +++ b/llvm/lib/Target/X86/X86Values.h
 @@ -0,0 +1,25 @@
@@ -16742,7 +16742,7 @@ index 00000000000..8a76e00e16e
 +
 +}
 diff --git a/llvm/lib/Transforms/Instrumentation/CMakeLists.txt b/llvm/lib/Transforms/Instrumentation/CMakeLists.txt
-index 78b697f7f94..228029a8e71 100644
+index 78b697f7f940..228029a8e716 100644
 --- a/llvm/lib/Transforms/Instrumentation/CMakeLists.txt
 +++ b/llvm/lib/Transforms/Instrumentation/CMakeLists.txt
 @@ -4,12 +4,15 @@ add_llvm_library(LLVMInstrumentation
@@ -16763,7 +16763,7 @@ index 78b697f7f94..228029a8e71 100644
    PoisonChecking.cpp
 diff --git a/llvm/lib/Transforms/Instrumentation/InsertStackMaps.cpp b/llvm/lib/Transforms/Instrumentation/InsertStackMaps.cpp
 new file mode 100644
-index 00000000000..4ddd7cac63e
+index 000000000000..4ddd7cac63ef
 --- /dev/null
 +++ b/llvm/lib/Transforms/Instrumentation/InsertStackMaps.cpp
 @@ -0,0 +1,358 @@
@@ -17126,7 +17126,7 @@ index 00000000000..4ddd7cac63e
 +  ModulePass *createInsertStackMapsPass() { return new InsertStackMaps(); }
 +}
 diff --git a/llvm/lib/Transforms/Instrumentation/Instrumentation.cpp b/llvm/lib/Transforms/Instrumentation/Instrumentation.cpp
-index f56a1bd91b8..c40780384b4 100644
+index f56a1bd91b89..c40780384b4e 100644
 --- a/llvm/lib/Transforms/Instrumentation/Instrumentation.cpp
 +++ b/llvm/lib/Transforms/Instrumentation/Instrumentation.cpp
 @@ -105,14 +105,17 @@ void llvm::initializeInstrumentation(PassRegistry &Registry) {
@@ -17149,7 +17149,7 @@ index f56a1bd91b8..c40780384b4 100644
    initializeThreadSanitizerLegacyPassPass(Registry);
 diff --git a/llvm/lib/Transforms/Instrumentation/LibcStackMaps.cpp b/llvm/lib/Transforms/Instrumentation/LibcStackMaps.cpp
 new file mode 100644
-index 00000000000..4f22ec742c6
+index 000000000000..4f22ec742c66
 --- /dev/null
 +++ b/llvm/lib/Transforms/Instrumentation/LibcStackMaps.cpp
 @@ -0,0 +1,231 @@
@@ -17386,7 +17386,7 @@ index 00000000000..4f22ec742c6
 +}
 diff --git a/llvm/lib/Transforms/Instrumentation/MigrationPoints.cpp b/llvm/lib/Transforms/Instrumentation/MigrationPoints.cpp
 new file mode 100644
-index 00000000000..e51cbc6b54b
+index 000000000000..e51cbc6b54b6
 --- /dev/null
 +++ b/llvm/lib/Transforms/Instrumentation/MigrationPoints.cpp
 @@ -0,0 +1,489 @@
@@ -17880,7 +17880,7 @@ index 00000000000..e51cbc6b54b
 +  { return new MigrationPoints(); }
 +}
 diff --git a/llvm/lib/Transforms/Utils/CMakeLists.txt b/llvm/lib/Transforms/Utils/CMakeLists.txt
-index c232aa6223c..4d17f43a44d 100644
+index c232aa6223cc..4d17f43a44d2 100644
 --- a/llvm/lib/Transforms/Utils/CMakeLists.txt
 +++ b/llvm/lib/Transforms/Utils/CMakeLists.txt
 @@ -41,6 +41,7 @@ add_llvm_library(LLVMTransformUtils
@@ -17901,7 +17901,7 @@ index c232aa6223c..4d17f43a44d 100644
    UnifyFunctionExitNodes.cpp
 diff --git a/llvm/lib/Transforms/Utils/NameStringLiterals.cpp b/llvm/lib/Transforms/Utils/NameStringLiterals.cpp
 new file mode 100644
-index 00000000000..03cbb7c9ea1
+index 000000000000..03cbb7c9ea11
 --- /dev/null
 +++ b/llvm/lib/Transforms/Utils/NameStringLiterals.cpp
 @@ -0,0 +1,118 @@
@@ -18025,7 +18025,7 @@ index 00000000000..03cbb7c9ea1
 +}
 diff --git a/llvm/lib/Transforms/Utils/StaticVarSections.cpp b/llvm/lib/Transforms/Utils/StaticVarSections.cpp
 new file mode 100644
-index 00000000000..1ea0d2402ca
+index 000000000000..1ea0d2402ca4
 --- /dev/null
 +++ b/llvm/lib/Transforms/Utils/StaticVarSections.cpp
 @@ -0,0 +1,104 @@
@@ -18134,7 +18134,7 @@ index 00000000000..1ea0d2402ca
 +  ModulePass *createStaticVarSectionsPass() { return new StaticVarSections(); }
 +}
 diff --git a/llvm/lib/Transforms/Utils/Utils.cpp b/llvm/lib/Transforms/Utils/Utils.cpp
-index 5272ab6e95d..f11df0a7311 100644
+index 5272ab6e95d5..f11df0a73118 100644
 --- a/llvm/lib/Transforms/Utils/Utils.cpp
 +++ b/llvm/lib/Transforms/Utils/Utils.cpp
 @@ -33,7 +33,9 @@ void llvm::initializeTransformUtils(PassRegistry &Registry) {
@@ -18148,7 +18148,7 @@ index 5272ab6e95d..f11df0a7311 100644
    initializeUnifyFunctionExitNodesPass(Registry);
    initializeMetaRenamerPass(Registry);
 diff --git a/llvm/test/CodeGen/AArch64/arm64-anyregcc.ll b/llvm/test/CodeGen/AArch64/arm64-anyregcc.ll
-index 10989a07990..2a2f4519604 100644
+index 10989a07990c..2a2f45196046 100644
 --- a/llvm/test/CodeGen/AArch64/arm64-anyregcc.ll
 +++ b/llvm/test/CodeGen/AArch64/arm64-anyregcc.ll
 @@ -4,7 +4,7 @@
@@ -18613,7 +18613,7 @@ index 10989a07990..2a2f4519604 100644
  define i64 @patchpoint_spillargs(i64 %p1, i64 %p2, i64 %p3, i64 %p4) {
  entry:
 diff --git a/llvm/test/CodeGen/AArch64/arm64-stackmap.ll b/llvm/test/CodeGen/AArch64/arm64-stackmap.ll
-index e12a35a93e2..3eb1d275300 100644
+index e12a35a93e22..3eb1d2753001 100644
 --- a/llvm/test/CodeGen/AArch64/arm64-stackmap.ll
 +++ b/llvm/test/CodeGen/AArch64/arm64-stackmap.ll
 @@ -10,7 +10,7 @@ target datalayout = "e-m:o-i64:64-f80:128-n8:16:32:64-S128"
@@ -18843,7 +18843,7 @@ index e12a35a93e2..3eb1d275300 100644
  define void @clobberLR(i32 %a) {
    tail call void asm sideeffect "nop", "~{x0},~{x1},~{x2},~{x3},~{x4},~{x5},~{x6},~{x7},~{x8},~{x9},~{x10},~{x11},~{x12},~{x13},~{x14},~{x15},~{x16},~{x17},~{x18},~{x19},~{x20},~{x21},~{x22},~{x23},~{x24},~{x25},~{x26},~{x27},~{x28},~{x29},~{x31}"() nounwind
 diff --git a/llvm/test/CodeGen/AArch64/stackmap-liveness.ll b/llvm/test/CodeGen/AArch64/stackmap-liveness.ll
-index b66dbfae6c8..224a9c41852 100644
+index b66dbfae6c8a..224a9c418526 100644
 --- a/llvm/test/CodeGen/AArch64/stackmap-liveness.ll
 +++ b/llvm/test/CodeGen/AArch64/stackmap-liveness.ll
 @@ -5,7 +5,7 @@ target datalayout = "e-m:o-i64:64-i128:128-n32:64-S128"
@@ -18869,7 +18869,7 @@ index b66dbfae6c8..224a9c41852 100644
  declare void @llvm.experimental.patchpoint.void(i64, i32, i8*, i32, ...)
 +
 diff --git a/llvm/test/CodeGen/PowerPC/ppc64-anyregcc.ll b/llvm/test/CodeGen/PowerPC/ppc64-anyregcc.ll
-index b8c62c3f936..6d4f9d14b41 100644
+index b8c62c3f9362..6d4f9d14b413 100644
 --- a/llvm/test/CodeGen/PowerPC/ppc64-anyregcc.ll
 +++ b/llvm/test/CodeGen/PowerPC/ppc64-anyregcc.ll
 @@ -31,7 +31,7 @@ target triple = "powerpc64-unknown-linux-gnu"
@@ -19334,7 +19334,7 @@ index b8c62c3f936..6d4f9d14b41 100644
  define i64 @patchpoint_spillargs(i64 %p1, i64 %p2, i64 %p3, i64 %p4) {
  entry:
 diff --git a/llvm/test/CodeGen/PowerPC/ppc64-stackmap.ll b/llvm/test/CodeGen/PowerPC/ppc64-stackmap.ll
-index 8b2466bc060..ad9ce8dd4ec 100644
+index 8b2466bc0601..ad9ce8dd4ec9 100644
 --- a/llvm/test/CodeGen/PowerPC/ppc64-stackmap.ll
 +++ b/llvm/test/CodeGen/PowerPC/ppc64-stackmap.ll
 @@ -44,7 +44,7 @@ target triple = "powerpc64-unknown-linux-gnu"
@@ -19565,7 +19565,7 @@ index 8b2466bc060..ad9ce8dd4ec 100644
    tail call void asm sideeffect "nop", "~{r0},~{r3},~{r4},~{r5},~{r6},~{r7},~{r8},~{r9},~{r10},~{r11},~{r12},~{r14},~{r15},~{r16},~{r17},~{r18},~{r19},~{r20},~{r21},~{r22},~{r23},~{r24},~{r25},~{r26},~{r27},~{r28},~{r29},~{r30},~{r31}"() nounwind
 diff --git a/llvm/test/CodeGen/RISCV/stackmap-nops.ll b/llvm/test/CodeGen/RISCV/stackmap-nops.ll
 new file mode 100644
-index 00000000000..69c0cde261b
+index 000000000000..69c0cde261b4
 --- /dev/null
 +++ b/llvm/test/CodeGen/RISCV/stackmap-nops.ll
 @@ -0,0 +1,24 @@
@@ -19595,7 +19595,7 @@ index 00000000000..69c0cde261b
 +
 diff --git a/llvm/test/CodeGen/RISCV/stackmap.ll b/llvm/test/CodeGen/RISCV/stackmap.ll
 new file mode 100644
-index 00000000000..8b2466bc060
+index 000000000000..8b2466bc0601
 --- /dev/null
 +++ b/llvm/test/CodeGen/RISCV/stackmap.ll
 @@ -0,0 +1,372 @@
@@ -19972,7 +19972,7 @@ index 00000000000..8b2466bc060
 +declare void @llvm.experimental.patchpoint.void(i64, i32, i8*, i32, ...)
 +declare i64 @llvm.experimental.patchpoint.i64(i64, i32, i8*, i32, ...)
 diff --git a/llvm/test/CodeGen/X86/anyregcc.ll b/llvm/test/CodeGen/X86/anyregcc.ll
-index 7cf6d71b78c..97721777f41 100644
+index 7cf6d71b78cf..97721777f41d 100644
 --- a/llvm/test/CodeGen/X86/anyregcc.ll
 +++ b/llvm/test/CodeGen/X86/anyregcc.ll
 @@ -7,7 +7,7 @@
@@ -20377,7 +20377,7 @@ index 7cf6d71b78c..97721777f41 100644
  define i64 @patchpoint_spillargs(i64 %p1, i64 %p2, i64 %p3, i64 %p4) {
  entry:
 diff --git a/llvm/test/CodeGen/X86/deopt-bundles.ll b/llvm/test/CodeGen/X86/deopt-bundles.ll
-index 9745330c9ac..615007e1fae 100644
+index 9745330c9acd..615007e1fae6 100644
 --- a/llvm/test/CodeGen/X86/deopt-bundles.ll
 +++ b/llvm/test/CodeGen/X86/deopt-bundles.ll
 @@ -9,45 +9,45 @@ target triple = "x86_64-apple-macosx10.11.0"
@@ -20466,7 +20466,7 @@ index 9745330c9ac..615007e1fae 100644
  }
  
 diff --git a/llvm/test/CodeGen/X86/deopt-intrinsic-cconv.ll b/llvm/test/CodeGen/X86/deopt-intrinsic-cconv.ll
-index 903378416ce..67ac1268101 100644
+index 903378416ce0..67ac12681014 100644
 --- a/llvm/test/CodeGen/X86/deopt-intrinsic-cconv.ll
 +++ b/llvm/test/CodeGen/X86/deopt-intrinsic-cconv.ll
 @@ -27,8 +27,8 @@ entry:
@@ -20483,7 +20483,7 @@ index 903378416ce..67ac1268101 100644
 +; STACKMAPS-NEXT: Stack Maps: 		Loc 3: Constant 3	[encoding: .byte 4, .byte 8, .short 0, .int 3]
  ; STACKMAPS-NEXT: Stack Maps: 	has 0 live-out registers
 diff --git a/llvm/test/CodeGen/X86/deopt-intrinsic.ll b/llvm/test/CodeGen/X86/deopt-intrinsic.ll
-index b99482f0fb0..6c7d3e8b50d 100644
+index b99482f0fb03..6c7d3e8b50d4 100644
 --- a/llvm/test/CodeGen/X86/deopt-intrinsic.ll
 +++ b/llvm/test/CodeGen/X86/deopt-intrinsic.ll
 @@ -40,15 +40,15 @@ entry:
@@ -20511,7 +20511,7 @@ index b99482f0fb0..6c7d3e8b50d 100644
 +; STACKMAPS-NEXT: Stack Maps: 		Loc 3: Constant 1	[encoding: .byte 4, .byte 8, .short 0, .int 1]
  ; STACKMAPS-NEXT: Stack Maps: 	has 0 live-out registers
 diff --git a/llvm/test/CodeGen/X86/patchpoint-invoke.ll b/llvm/test/CodeGen/X86/patchpoint-invoke.ll
-index d888fb5e4cf..4360ec4256d 100644
+index d888fb5e4cf3..4360ec4256db 100644
 --- a/llvm/test/CodeGen/X86/patchpoint-invoke.ll
 +++ b/llvm/test/CodeGen/X86/patchpoint-invoke.ll
 @@ -47,7 +47,7 @@ threw:
@@ -20524,7 +20524,7 @@ index d888fb5e4cf..4360ec4256d 100644
  ; CHECK-NEXT:   .short 0
  ; Num Functions
 diff --git a/llvm/test/CodeGen/X86/stackmap-fast-isel.ll b/llvm/test/CodeGen/X86/stackmap-fast-isel.ll
-index dd25065f306..e78c2917703 100644
+index dd25065f3063..e78c2917703f 100644
 --- a/llvm/test/CodeGen/X86/stackmap-fast-isel.ll
 +++ b/llvm/test/CodeGen/X86/stackmap-fast-isel.ll
 @@ -4,7 +4,7 @@
@@ -20676,7 +20676,7 @@ index dd25065f306..e78c2917703 100644
  
  define void @directFrameIdx() {
 diff --git a/llvm/test/CodeGen/X86/stackmap-large-constants.ll b/llvm/test/CodeGen/X86/stackmap-large-constants.ll
-index 7de430b5393..0143a4e0fbc 100644
+index 7de430b5393a..0143a4e0fbc8 100644
 --- a/llvm/test/CodeGen/X86/stackmap-large-constants.ll
 +++ b/llvm/test/CodeGen/X86/stackmap-large-constants.ll
 @@ -3,7 +3,7 @@
@@ -20740,7 +20740,7 @@ index 7de430b5393..0143a4e0fbc 100644
  ; CHECK-NEXT: 	.short	0
 diff --git a/llvm/test/CodeGen/X86/stackmap-large-location-size.ll b/llvm/test/CodeGen/X86/stackmap-large-location-size.ll
 deleted file mode 100644
-index 6c90ddaedcc..00000000000
+index 6c90ddaedcc9..000000000000
 --- a/llvm/test/CodeGen/X86/stackmap-large-location-size.ll
 +++ /dev/null
 @@ -1,172 +0,0 @@
@@ -20917,7 +20917,7 @@ index 6c90ddaedcc..00000000000
 -declare token @llvm.experimental.gc.statepoint.p0f_isVoidf(i64, i32, void ()*, i32, i32, ...)
 -declare <400 x i8 addrspace(1)*> @llvm.experimental.gc.relocate.v400p1i8(token, i32, i32)
 diff --git a/llvm/test/CodeGen/X86/stackmap-liveness.ll b/llvm/test/CodeGen/X86/stackmap-liveness.ll
-index 4cbfe234ff4..604b305c6a8 100644
+index 4cbfe234ff41..604b305c6a81 100644
 --- a/llvm/test/CodeGen/X86/stackmap-liveness.ll
 +++ b/llvm/test/CodeGen/X86/stackmap-liveness.ll
 @@ -6,7 +6,7 @@
@@ -21005,7 +21005,7 @@ index 4cbfe234ff4..604b305c6a8 100644
  ; Num LiveOut Entries: 2
  ; PATCH-NEXT:   .short  2
 diff --git a/llvm/test/CodeGen/X86/stackmap.ll b/llvm/test/CodeGen/X86/stackmap.ll
-index 601100bd570..d26327f4a95 100644
+index 601100bd5705..d26327f4a958 100644
 --- a/llvm/test/CodeGen/X86/stackmap.ll
 +++ b/llvm/test/CodeGen/X86/stackmap.ll
 @@ -5,7 +5,7 @@
@@ -21346,7 +21346,7 @@ index 601100bd570..d26327f4a95 100644
  define void @clobberScratch(i32 %a) {
    tail call void asm sideeffect "nop", "~{ax},~{bx},~{cx},~{dx},~{bp},~{si},~{di},~{r8},~{r9},~{r10},~{r12},~{r13},~{r14},~{r15}"() nounwind
 diff --git a/llvm/test/CodeGen/X86/statepoint-allocas.ll b/llvm/test/CodeGen/X86/statepoint-allocas.ll
-index c7bae8ff18c..8b433fe2b88 100644
+index c7bae8ff18c1..8b433fe2b88c 100644
 --- a/llvm/test/CodeGen/X86/statepoint-allocas.ll
 +++ b/llvm/test/CodeGen/X86/statepoint-allocas.ll
 @@ -57,7 +57,7 @@ declare token @llvm.experimental.gc.statepoint.p0f_i1f(i64, i32, i1 ()*, i32, i3
@@ -21375,7 +21375,7 @@ index c7bae8ff18c..8b433fe2b88 100644
  ; CHECK: .p2align	3
 +
 diff --git a/llvm/test/CodeGen/X86/statepoint-forward.ll b/llvm/test/CodeGen/X86/statepoint-forward.ll
-index bee4b5ac884..d97bc0c7560 100644
+index bee4b5ac884e..d97bc0c75602 100644
 --- a/llvm/test/CodeGen/X86/statepoint-forward.ll
 +++ b/llvm/test/CodeGen/X86/statepoint-forward.ll
 @@ -1,5 +1,5 @@
@@ -21386,7 +21386,7 @@ index bee4b5ac884..d97bc0c7560 100644
  ; about memory which contains potential gc references across a statepoint.
  ; They're carefully written to only outlaw forwarding of references. 
 diff --git a/llvm/test/CodeGen/X86/statepoint-gctransition-call-lowering.ll b/llvm/test/CodeGen/X86/statepoint-gctransition-call-lowering.ll
-index 90f2002e2d4..2562cbf9362 100644
+index 90f2002e2d45..2562cbf93622 100644
 --- a/llvm/test/CodeGen/X86/statepoint-gctransition-call-lowering.ll
 +++ b/llvm/test/CodeGen/X86/statepoint-gctransition-call-lowering.ll
 @@ -1,4 +1,4 @@
@@ -21396,7 +21396,7 @@ index 90f2002e2d4..2562cbf9362 100644
  ; screw up normal call lowering when a statepoint is a GC transition.
  
 diff --git a/llvm/test/CodeGen/X86/statepoint-live-in.ll b/llvm/test/CodeGen/X86/statepoint-live-in.ll
-index acc12f8e628..0a052992b16 100644
+index acc12f8e6283..0a052992b16b 100644
 --- a/llvm/test/CodeGen/X86/statepoint-live-in.ll
 +++ b/llvm/test/CodeGen/X86/statepoint-live-in.ll
 @@ -636,37 +636,27 @@ entry:
@@ -21443,7 +21443,7 @@ index acc12f8e628..0a052992b16 100644
  
  declare token @llvm.experimental.gc.statepoint.p0f_isVoidf(i64, i32, void ()*, i32, i32, ...)
 diff --git a/llvm/test/CodeGen/X86/statepoint-stack-usage.ll b/llvm/test/CodeGen/X86/statepoint-stack-usage.ll
-index 73b0d6a1807..bec73b20af8 100644
+index 73b0d6a18071..bec73b20af87 100644
 --- a/llvm/test/CodeGen/X86/statepoint-stack-usage.ll
 +++ b/llvm/test/CodeGen/X86/statepoint-stack-usage.ll
 @@ -1,4 +1,4 @@
@@ -21453,7 +21453,7 @@ index 73b0d6a1807..bec73b20af8 100644
  target datalayout = "e-i64:64-f80:128-n8:16:32:64-S128"
  target triple = "x86_64-pc-linux-gnu"
 diff --git a/llvm/test/CodeGen/X86/statepoint-stackmap-format.ll b/llvm/test/CodeGen/X86/statepoint-stackmap-format.ll
-index ee71f6e70ef..bfa0035b330 100644
+index ee71f6e70ef4..bfa0035b330f 100644
 --- a/llvm/test/CodeGen/X86/statepoint-stackmap-format.ll
 +++ b/llvm/test/CodeGen/X86/statepoint-stackmap-format.ll
 @@ -1,5 +1,5 @@
@@ -21687,7 +21687,7 @@ index ee71f6e70ef..bfa0035b330 100644
  ; CHECK: .p2align	3
 +
 diff --git a/llvm/test/CodeGen/X86/statepoint-vector-bad-spill.ll b/llvm/test/CodeGen/X86/statepoint-vector-bad-spill.ll
-index 7c55491bb1b..848988589cb 100644
+index 7c55491bb1be..848988589cb0 100644
 --- a/llvm/test/CodeGen/X86/statepoint-vector-bad-spill.ll
 +++ b/llvm/test/CodeGen/X86/statepoint-vector-bad-spill.ll
 @@ -1,4 +1,4 @@
@@ -21697,7 +21697,7 @@ index 7c55491bb1b..848988589cb 100644
  ; This is checking for a crash.
  
 diff --git a/llvm/test/CodeGen/X86/statepoint-vector.ll b/llvm/test/CodeGen/X86/statepoint-vector.ll
-index 30fb8027e71..74485e887a6 100644
+index 30fb8027e715..74485e887a62 100644
 --- a/llvm/test/CodeGen/X86/statepoint-vector.ll
 +++ b/llvm/test/CodeGen/X86/statepoint-vector.ll
 @@ -134,67 +134,51 @@ entry:
@@ -21785,7 +21785,7 @@ index 30fb8027e71..74485e887a6 100644
  
  declare void @do_safepoint()
 diff --git a/llvm/test/Object/stackmap-dump.test b/llvm/test/Object/stackmap-dump.test
-index 0d9b23af2ca..a325c040d8b 100644
+index 0d9b23af2cae..a325c040d8bf 100644
 --- a/llvm/test/Object/stackmap-dump.test
 +++ b/llvm/test/Object/stackmap-dump.test
 @@ -1,173 +1,16 @@
@@ -21976,7 +21976,7 @@ index 0d9b23af2ca..a325c040d8b 100644
 -CHECK-NEXT:     0 locations:
 -CHECK-NEXT:     0 live-outs: [ ]
 diff --git a/llvm/tools/llvm-readobj/StackMapPrinter.h b/llvm/tools/llvm-readobj/StackMapPrinter.h
-index ef757564026..c40e65a53a5 100644
+index ef7575640268..c40e65a53a57 100644
 --- a/llvm/tools/llvm-readobj/StackMapPrinter.h
 +++ b/llvm/tools/llvm-readobj/StackMapPrinter.h
 @@ -47,24 +47,24 @@ void prettyPrintStackMap(ScopedPrinter &W, const StackMapParserT &SMP) {
@@ -22010,3 +22010,15 @@ index ef757564026..c40e65a53a5 100644
      }
  
      raw_ostream &OS = W.startLine();
+diff --git a/llvm/utils/benchmark/src/benchmark_register.h b/llvm/utils/benchmark/src/benchmark_register.h
+index 0705e219f2fa..4caa5ad4da07 100644
+--- a/llvm/utils/benchmark/src/benchmark_register.h
++++ b/llvm/utils/benchmark/src/benchmark_register.h
+@@ -1,6 +1,7 @@
+ #ifndef BENCHMARK_REGISTER_H
+ #define BENCHMARK_REGISTER_H
+ 
++#include <limits>
+ #include <vector>
+ 
+ #include "check.h"

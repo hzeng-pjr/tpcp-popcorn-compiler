@@ -44,16 +44,14 @@ if (cross_dir is None):
 
 cross_path = os.path.dirname(os.path.dirname(cross_dir))
 
-# Popcorn kernel version. Needed to adjust Musl system calls.
-kernel_version = 4.4
-
 # LLVM URL
-llvm_url = 'https://github.com/llvm/llvm-project.git'
+#llvm_url = 'https://github.com/llvm/llvm-project.git'
+llvm_url = 'file:///scratch/mirrors/llvm-project.git'
 llvm_version = 9
 
 # Binutils 2.32 URL
-binutils_url = 'http://ftp.gnu.org/gnu/binutils/binutils-2.32.tar.bz2'
-
+#binutils_url = 'http://ftp.gnu.org/gnu/binutils/binutils-2.32.tar.bz2'
+binutils_url = 'http://philippidis.net/~jimmy/mirrors/binutils-2.32.tar.bz2'
 
 # GNU libc (glibc)
 
@@ -66,14 +64,18 @@ binutils_url = 'http://ftp.gnu.org/gnu/binutils/binutils-2.32.tar.bz2'
 # versions of glibc. Also, the alignment tool is capable of allowing
 # one node to glibc and another to use musl libc.
 
-glibc_version = "2.27" # Ubuntu 18.04
-#glibc_version = "2.31" # Fedora 31
-glibc_url = "git://sourceware.org/git/glibc.git"
+#glibc_version = "2.27" # Ubuntu 18.04
+glibc_version = "2.31" # Fedora 31
+#glibc_url = "git://sourceware.org/git/glibc.git"
+glibc_url = "file:///scratch/mirrors/glibc.git"
 
 gcc_version = "9.3.0"
-gcc_url = "git://gcc.gnu.org/git/gcc.git"
+#gcc_url = "git://gcc.gnu.org/git/gcc.git"
+gcc_url = "file:///scratch/mirrors/gcc.git"
 
-linux_url = "https://github.com/ssrg-vt/popcorn-kernel.git"
+linux_version = "v5.4.169"
+#linux_url = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
+linux_url = "file:///scratch/mirrors/linux-stable.git"
 
 #================================================
 # ARGUMENT PARSING
@@ -199,14 +201,9 @@ def setup_argument_parsing():
                         action="store_true",
                         dest="use_llvm37")
 
-    process_opts.add_argument("--with-popcorn-kernel-5_2",
-                        help="Use Popcorn Kernel version 5.2 instead of 4.4",
-                        action="store_true",
-                        dest="use_kernel_52")
-
     process_opts.add_argument("--clean",
-			help="Remove any build directories",
-			action="store_true",
+                        help="Remove any build directories",
+                        action="store_true",
                         dest="clean_install")
 
     return parser
@@ -214,7 +211,6 @@ def setup_argument_parsing():
 def postprocess_args(args):
     global supported_targets
     global llvm_targets
-    global kernel_version
     global llvm_version
 
     # Clean up paths
@@ -245,9 +241,6 @@ def postprocess_args(args):
 
     if args.use_llvm37:
         llvm_version = 3.7
-
-    if args.use_kernel_52:
-        kernel_version = 5.2
 
     # Turn on all components for installation if requested
     if args.install_all:
@@ -391,7 +384,7 @@ def install_clang_llvm(base_path, install_path, num_threads, llvm_targets):
         print('Patching LLVM...')
         args = ['patch', '-p1', '-d', llvm_download_path]
         run_cmd('patch LLVM', args, patch_file)
-        
+
     # LLVM-3.7's build system needs clang inside llvm/tools
     if llvm_version == 3.7:
         clang_src = os.path.join(llvm_download_path, 'clang')
@@ -486,7 +479,7 @@ def install_binutils(base_path, install_path, num_threads, target):
     run_cmd('install binutils', args)
 
     ld_gold = install_path + "/bin/ld.gold"
-    
+
     if os.path.exists (ld_gold):
         os.unlink (ld_gold)
 
@@ -507,10 +500,7 @@ def install_musl(base_path, install_path, target, num_threads):
     if os.path.isfile('Makefile'):
         run_cmd('clean musl', ['make', 'distclean'])
 
-    if kernel_version == 4.4:
-        kernel_arg = "POPCORN_4_4"
-    elif kernel_version == 5.2:
-        kernel_arg = "POPCORN_5_2"
+    kernel_arg = "POPCORN_5_2"
 
     print("Configuring musl ({})...".format(target))
     args = ' '.join(['./configure',
@@ -541,7 +531,7 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
 
     gcc_download_path = os.path.join(install_path, 'src', 'gcc')
     glibc_download_path = os.path.join(install_path, 'src', 'glibc')
-    linux_download_path = os.path.join(install_path, 'src', 'popcorn-kernel')
+    linux_download_path = os.path.join(install_path, 'src', 'linux-kernel')
 
     #TODO: Check whether 'install_path'/src exists.
 
@@ -549,8 +539,8 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
             linux_download_path]
     run_cmd('cleanup gcc and glibc sources', args)
 
-    args = ['git', 'clone', '--depth', '1', '-b', 'releases/gcc-' + gcc_version, gcc_url,
-            gcc_download_path]
+    args = ['git', 'clone', '--depth', '1', '-b',
+            'releases/gcc-' + gcc_version, gcc_url, gcc_download_path]
     run_cmd('download GCC source', args)
 
     # Download GCC prerequisites
@@ -571,11 +561,13 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
         args = ['patch', '-p1', '-d', glibc_download_path]
         run_cmd('patch GLIBC', args, patch_file)
 
-    args = ['git', 'clone', '--depth', '1', linux_url, linux_download_path]
-    run_cmd('download Popcorn Kernel source', args)
+    args = ['git', 'clone', '--depth', '1', '-b', linux_version, linux_url,
+            linux_download_path]
+    run_cmd('download Linux Kernel source', args)
 
     for target in install_targets:
-        target_path = os.path.join(install_path, target + '-popcorn-linux-gnu')
+        target_path = os.path.join(install_path,
+                                   target + '-popcorn-linux-gnu')
         sysroot = os.path.join(install_path, target_path, 'sysroot')
         sysroot_usr = os.path.join(sysroot, 'usr')
         libdir_path = os.path.join(install_path, target_path, 'lib')
@@ -587,7 +579,8 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
         os.makedirs(sysroot, exist_ok=True)
         os.chdir(linux_download_path)
         args = ['make', 'ARCH={}'.format(linux_targets[target]),
-                'INSTALL_HDR_PATH="{}"'.format(sysroot), 'headers_install']        
+                'INSTALL_HDR_PATH="{}"'.format(sysroot),
+                'headers_install']
         run_cmd('Install Linux headers', args)
         shutil.copytree(sysroot, sysroot_usr)
 
@@ -595,7 +588,7 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
         # $INST/target/include to be populated with the Linux headers
         args = ['make', 'ARCH={}'.format(linux_targets[target]),
                 'INSTALL_HDR_PATH="{}"'.format(llvm_target_path),
-                'headers_install']        
+                'headers_install']
         run_cmd('Install Linux headers', args)
 
         # GCC Stage 1
@@ -649,7 +642,7 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
         args = [glibc_download_path + '/configure',
                 '--prefix=/usr',
                 '--target={}-popcorn-linux-gnu'.format(target),
-                '--host={}-linux-gnu'.format(target),
+                '--host={}-popcorn-linux-gnu'.format(target),
                 '--enable-shared',
                 '--with-headers={}/include'.format(sysroot),
                 '--disable-multilib',
@@ -781,7 +774,8 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
                 '--libdir=/usr/lib',
                 '--with-libdir={}'.format(libdir_path),
                 '--target={}-popcorn-linux-gnu'.format(target),
-                '--host={}-linux-gnu'.format(target),
+                '--host={}-popcorn-linux-gnu'.format(target),
+                'CXX={}-fake-g++'.format(target),
                 '--disable-werror',
                 '--enable-shared',
                 '--enable-obsolete-rpc',
