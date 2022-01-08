@@ -1,8 +1,8 @@
 #!/bin/sh
 cc="@CC@"
 target="-target @TARGET@-linux-gnu"
-gcc="@TARGET@-popcorn-linux-gnu-gcc"
-ld="@TARGET@-popcorn-linux-gnu-ld.bfd"
+gcc="@TARGET@-linux-gnu-gcc"
+ld="@TARGET@-linux-gnu-ld.bfd"
 libc_lib="@LIBDIR@"
 ldso="@LDSO@"
 cleared=

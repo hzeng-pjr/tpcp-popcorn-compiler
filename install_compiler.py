@@ -1136,7 +1136,12 @@ def main(args):
             install_musl(args.base_path, args.install_path, target,
                          args.threads)
 
-        if args.libelf_install:
+    if args.remote_io_install:
+        install_remote_io(args.base_path, args.install_path,
+                          args.threads,
+                          args.debug_remote_io)
+
+    if args.libelf_install:
             install_libelf(args.base_path, args.install_path, target,
                            args.threads)
 
@@ -1149,11 +1154,6 @@ def main(args):
         install_migration(args.base_path, args.install_path, args.threads,
                           args.libmigration_type,
                           args.enable_libmigration_timing)
-
-    if args.remote_io_install:
-        install_remote_io(args.base_path, args.install_path,
-                          args.threads,
-                          args.debug_remote_io)
 
     if args.libopenpop_install:
         for target in args.install_targets:

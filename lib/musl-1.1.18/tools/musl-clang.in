@@ -2,7 +2,7 @@
 cc="@CC@"
 target="@TARGET@"
 triple="${target}-linux-gnu"
-popcorn_cc="$(dirname @CC@)/${target}-popcorn-linux-gnu-gcc"
+popcorn_cc="${target}-linux-gnu-gcc"
 libc="@PREFIX@"
 libc_inc="@INCDIR@"
 libc_lib="@LIBDIR@"
