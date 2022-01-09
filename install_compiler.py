@@ -1136,14 +1136,14 @@ def main(args):
             install_musl(args.base_path, args.install_path, target,
                          args.threads)
 
+        if args.libelf_install:
+            install_libelf(args.base_path, args.install_path, target,
+                           args.threads)
+
     if args.remote_io_install:
         install_remote_io(args.base_path, args.install_path,
                           args.threads,
                           args.debug_remote_io)
-
-    if args.libelf_install:
-            install_libelf(args.base_path, args.install_path, target,
-                           args.threads)
 
     if args.stacktransform_install:
         install_stack_transformation(args.base_path, args.install_path,
