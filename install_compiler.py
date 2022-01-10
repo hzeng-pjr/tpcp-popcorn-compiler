@@ -45,13 +45,13 @@ if (cross_dir is None):
 cross_path = os.path.dirname(os.path.dirname(cross_dir))
 
 # LLVM URL
-#llvm_url = 'https://github.com/llvm/llvm-project.git'
-llvm_url = 'file:///scratch/mirrors/llvm-project.git'
+llvm_url = 'https://github.com/llvm/llvm-project.git'
+#llvm_url = 'file:///scratch/mirrors/llvm-project.git'
 llvm_version = 9
 
 # Binutils 2.32 URL
-#binutils_url = 'http://ftp.gnu.org/gnu/binutils/binutils-2.32.tar.bz2'
-binutils_url = 'file:///scratch/mirrors/binutils-2.32.tar.bz2'
+binutils_url = 'http://ftp.gnu.org/gnu/binutils/binutils-2.32.tar.bz2'
+#binutils_url = 'file:///scratch/mirrors/binutils-2.32.tar.bz2'
 
 # GNU libc (glibc)
 
@@ -64,18 +64,17 @@ binutils_url = 'file:///scratch/mirrors/binutils-2.32.tar.bz2'
 # versions of glibc. Also, the alignment tool is capable of allowing
 # one node to glibc and another to use musl libc.
 
-#glibc_version = "2.27" # Ubuntu 18.04
-glibc_version = "2.31" # Fedora 31
-#glibc_url = "git://sourceware.org/git/glibc.git"
-glibc_url = "file:///scratch/mirrors/glibc.git"
+glibc_version = "2.31" # Ubunut 20.04
+glibc_url = "git://sourceware.org/git/glibc.git"
+#glibc_url = "file:///scratch/mirrors/glibc.git"
 
 gcc_version = "9.3.0"
-#gcc_url = "git://gcc.gnu.org/git/gcc.git"
-gcc_url = "file:///scratch/mirrors/gcc.git"
+gcc_url = "git://gcc.gnu.org/git/gcc.git"
+#gcc_url = "file:///scratch/mirrors/gcc.git"
 
 linux_version = "v5.4.169"
-#linux_url = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
-linux_url = "file:///scratch/mirrors/linux-stable.git"
+linux_url = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
+#linux_url = "file:///scratch/mirrors/linux-stable.git"
 
 #================================================
 # ARGUMENT PARSING
