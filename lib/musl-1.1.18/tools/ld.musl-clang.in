@@ -2,7 +2,6 @@
 cc="@CC@"
 target="-target @TARGET@-linux-gnu"
 gcc="@TARGET@-linux-gnu-gcc"
-ld="@TARGET@-linux-gnu-ld.bfd"
 libc_lib="@LIBDIR@"
 ldso="@LDSO@"
 cleared=
@@ -51,4 +50,4 @@ for x ; do
     esac
 done
 
-exec $ld -nostdlib "$@" -lc -lgcc -lgcc_eh -dynamic-linker "$ldso"
+exec $($cc $target -print-prog-name=ld) -nostdlib "$@" -lc -lgcc -lgcc_eh -dynamic-linker "$ldso"
