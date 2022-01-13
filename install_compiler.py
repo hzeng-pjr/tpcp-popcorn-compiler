@@ -553,7 +553,8 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
     run_cmd('Download GCC prerequisites', args)
     os.chdir(cur_dir)
 
-    args = ['git', 'clone', '--depth', '1', '-b', "glibc-" + glibc_version,
+    args = ['git', 'clone', '--depth', '1', '-b',
+            "release/" + glibc_version + "/master",
              glibc_url, glibc_download_path]
     run_cmd('download GCC source', args)
 
@@ -855,7 +856,8 @@ def install_glibc(base_path, install_path, install_targets, num_threads):
     args = ['rm', '-rf', glibc_download_path, linux_download_path]
     run_cmd('cleanup gcc and glibc sources', args)
 
-    args = ['git', 'clone', '--depth', '1', '-b', "glibc-" + glibc_version,
+    args = ['git', 'clone', '--depth', '1', '-b',
+            "release/" + glibc_version + "/master",
              glibc_url, glibc_download_path]
     run_cmd('download GCC source', args)
 
