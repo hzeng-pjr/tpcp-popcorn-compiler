@@ -814,6 +814,8 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
                 '--with-sysroot={}'.format(sysroot),
                 '--with-local-prefix={}'.format(sysroot),
                 '--enable-languages={}'.format("c,c++"),
+                '--prefix={}'.format(install_path),
+                'CFLAGS_FOR_TARGET={}'.format("-ffunction-sections -fdata-sections"),
                 '--enable-__cxa_atexit',
                 '--disable-initfini-array',
                 '--enable-shared',
@@ -826,19 +828,6 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
                 '--disable-multilib',
                 '--disable-bootstrap',
                 '--with-libdir={}'.format(libdir_path) ]
-
-        if target == 'x86_64':
-            bindir = os.path.join(install_path, 'bin')
-            as_path = os.path.join(bindir, target + '-popcorn-linux-gnu-as')
-            ld_path = os.path.join(bindir, target + '-popcorn-linux-gnu-ld')
-            args.append('--prefix={}'.format(sysroot))
-            args.append('--bindir={}'.format(bindir))
-            args.append('--with-as={}'.format(as_path))
-            args.append('--with-ld={}'.format(ld_path))
-        else:
-            args.append('--prefix={}'.format(install_path))
-
-        args.append('CFLAGS_FOR_TARGET={}'.format("-ffunction-sections -fdata-sections"))
 
         run_cmd('Configure GCC Stage 3 for ' + target, args)
 
