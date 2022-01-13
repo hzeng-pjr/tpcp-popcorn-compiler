@@ -200,6 +200,11 @@ def setup_argument_parsing():
                         action="store_true",
                         dest="use_llvm37")
 
+    process_opts.add_argument("--install-glibc",
+                        help="Install GLIBC",
+                        action="store_true",
+                        dest="glibc_install")
+
     process_opts.add_argument("--clean",
                         help="Remove any build directories",
                         action="store_true",
@@ -839,6 +844,167 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
 
         os.chdir(cur_dir)
 
+def install_glibc(base_path, install_path, install_targets, num_threads):
+    cur_dir = os.getcwd()
+
+    glibc_download_path = os.path.join(install_path, 'src', 'glibc')
+    linux_download_path = os.path.join(install_path, 'src', 'linux-kernel')
+
+    #TODO: Check whether 'install_path'/src exists.
+
+    args = ['rm', '-rf', glibc_download_path, linux_download_path]
+    run_cmd('cleanup gcc and glibc sources', args)
+
+    args = ['git', 'clone', '--depth', '1', '-b', "glibc-" + glibc_version,
+             glibc_url, glibc_download_path]
+    run_cmd('download GCC source', args)
+
+    # Patch GLIBC
+    glibc_patch_path = os.path.join(base_path, 'patches', 'glibc',
+                                    'glibc-{}.patch'.format(glibc_version))
+    with open(glibc_patch_path, 'r') as patch_file:
+        print('Patching GLIBC...')
+        args = ['patch', '-p1', '-d', glibc_download_path]
+        run_cmd('patch GLIBC', args, patch_file)
+
+    args = ['git', 'clone', '--depth', '1', '-b', linux_version, linux_url,
+            linux_download_path]
+    run_cmd('download Linux Kernel source', args)
+
+    for target in install_targets:
+        target_path = os.path.join(install_path,
+                                   target + '-popcorn-linux-gnu')
+        sysroot = os.path.join(install_path, target_path, 'sysroot')
+        sysroot_usr = os.path.join(sysroot, 'usr')
+        libdir_path = os.path.join(install_path, target_path, 'lib')
+        llvm_target_path = os.path.join(install_path, target)
+
+        # Prepare the sysroot
+        args = ['rm', '-rf', sysroot]
+        run_cmd('cleanup sysroot for ' + target, args)
+        os.makedirs(sysroot, exist_ok=True)
+        os.chdir(linux_download_path)
+        args = ['make', 'ARCH={}'.format(linux_targets[target]),
+                'INSTALL_HDR_PATH="{}"'.format(sysroot),
+                'headers_install']
+        run_cmd('Install Linux headers', args)
+        shutil.copytree(sysroot, sysroot_usr)
+
+        # Certain applications, such as H-container redis, expect
+        # $INST/target/include to be populated with the Linux headers
+        args = ['make', 'ARCH={}'.format(linux_targets[target]),
+                'INSTALL_HDR_PATH="{}"'.format(llvm_target_path),
+                'headers_install']
+        run_cmd('Install Linux headers', args)
+
+        # glibc Stage 1
+        glibc_stage_1_dir = os.path.join(glibc_download_path,
+                                         "build-glibc-stage-1." + target)
+        os.chdir(glibc_download_path)
+        args = ['rm', '-rf', glibc_stage_1_dir]
+        run_cmd('clean ' + glibc_stage_1_dir, args)
+        os.mkdir(glibc_stage_1_dir)
+        os.chdir(glibc_stage_1_dir)
+
+        args = [glibc_download_path + '/configure',
+                '--prefix=/usr',
+                '--target={}-popcorn-linux-gnu'.format(target),
+                '--host={}-popcorn-linux-gnu'.format(target),
+                '--enable-shared',
+                '--with-headers={}/include'.format(sysroot),
+                '--disable-multilib',
+                '--disable-werror',
+                '--enable-kernel=4.4',
+                '--with-__thread',
+                '--with-tls',
+                '--enable-addons=no',
+                '--without-cvs',
+                '--disable-profile',
+                '--without-gd',
+                'CFLAGS={}'.format("-Og -g3")]
+        run_cmd('Configure glibc Stage 1 for ' + target, args)
+
+        args = ['make', 'install-bootstrap-headers=yes', 'install-headers',
+                'install_root={}'.format(sysroot)]
+        run_cmd('Build glibc Stage 1 for ' + target, args)
+
+        stubs_h = os.path.join(sysroot, 'usr', 'include', 'gnu', 'stubs.h')
+        pathlib.Path(stubs_h).touch()
+
+        src = os.path.join(glibc_download_path, "include", "features.h")
+        dst = os.path.join(sysroot, 'usr', 'include', "features.h")
+        shutil.copyfile(src, dst)
+
+        src = os.path.join(glibc_stage_1_dir, 'bits', 'stdio_lim.h')
+        dst = os.path.join(sysroot, 'usr', 'include', 'bits', 'stdio_lim.h')
+        shutil.copyfile(src, dst)
+
+        args = ['make', 'csu/subdir_lib']
+        run_cmd('make csu/subdir_lib for ' + target, args)
+
+        sysroot_lib = os.path.join(sysroot, 'lib')
+        shutil.rmtree(sysroot_lib, ignore_errors=True)
+        os.mkdir(sysroot_lib)
+
+        src = os.path.join(glibc_stage_1_dir, 'csu')
+        dst = os.path.join(sysroot, 'lib')
+        for i in ['crt1.o', 'crti.o', 'crtn.o']:
+            shutil.copyfile(os.path.join(src, i), os.path.join(dst, i))
+
+        args = ['{}-linux-gnu-gcc'.format(target),
+                '-o', '{}/lib/libc.so'.format(sysroot),
+                '-nostdlib', '-nostartfiles', '-shared', '-x', 'c',
+                '/dev/null']
+        run_cmd('Build dummy libc.so for ' + target, args)
+
+        # glibc Stage 2 (final)
+        glibc_stage_2_dir = os.path.join(glibc_download_path,
+                                         "build-glibc-stage-2." + target)
+        os.chdir(glibc_download_path)
+        args = ['rm', '-rf', glibc_stage_2_dir]
+        run_cmd('clean ' + glibc_stage_2_dir, args)
+        os.mkdir(glibc_stage_2_dir)
+        os.chdir(glibc_stage_2_dir)
+
+        for i in ['libc.so', 'crt1.o', 'crti.o', 'crtn.o']:
+            f = os.path.join(sysroot, 'lib', i)
+            if os.path.exists(f):
+                os.remove(f)
+
+        args = [glibc_download_path + '/configure',
+                '--prefix=/usr',
+                '--libdir=/usr/lib',
+                '--with-libdir={}'.format(libdir_path),
+                '--target={}-popcorn-linux-gnu'.format(target),
+                '--host={}-popcorn-linux-gnu'.format(target),
+                'CXX={}-fake-g++'.format(target),
+                '--disable-werror',
+                '--enable-shared',
+                '--enable-obsolete-rpc',
+                '--with-headers={}/include'.format(sysroot),
+                '--disable-multilib',
+                '--enable-kernel=4.4',
+                '--with-__thread',
+                '--with-tls',
+                '--without-cvs',
+                '--enable-addons=no',
+                '--disable-profile',
+                '--without-gd',
+                '--without-selinux',
+                'libc_cv_slibdir=/lib',
+                'libc_cv_rtlddir=/lib',
+                'CFLAGS={}'.format("-Og -g3")]
+        run_cmd('Configure glibc Stage 2 for ' + target, args)
+
+        args = ['make', '-j{}'.format(num_threads)]
+        run_cmd('Build glibc Stage 2 for ' + target, args)
+
+        args = ['make', '-j{}'.format(num_threads), 'install',
+                'install_root={}'.format(sysroot)]
+        run_cmd('Build glibc Stage 2 for ' + target, args)
+
+        os.chdir(cur_dir)
+
 def install_libelf(base_path, install_path, target, num_threads):
     cur_dir = os.getcwd()
 
@@ -1120,6 +1286,10 @@ def main(args):
     if args.gcc_glibc_install:
         install_gcc_glibc(args.base_path, args.install_path,
                           args.install_targets, args.threads)
+
+    if args.glibc_install:
+        install_glibc(args.base_path, args.install_path,
+                      args.install_targets, args.threads)
 
     for target in args.install_targets:
         if args.musl_install:
