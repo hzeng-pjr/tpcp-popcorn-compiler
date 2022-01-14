@@ -67,6 +67,7 @@ binutils_url = 'file:///scratch/mirrors/binutils-2.32.tar.bz2'
 glibc_version = "2.31" # Ubunut 20.04
 #glibc_url = "git://sourceware.org/git/glibc.git"
 glibc_url = "file:///scratch/mirrors/glibc.git"
+glibc_dev = "/scratch/pjr/glibc"
 
 gcc_version = "9.3.0"
 #gcc_url = "git://gcc.gnu.org/git/gcc.git"
@@ -854,20 +855,18 @@ def install_glibc(base_path, install_path, install_targets, num_threads):
     #TODO: Check whether 'install_path'/src exists.
 
     args = ['rm', '-rf', glibc_download_path, linux_download_path]
-    run_cmd('cleanup gcc and glibc sources', args)
+    run_cmd('cleanup glibc sources', args)
 
-    args = ['git', 'clone', '--depth', '1', '-b',
-            "release/" + glibc_version + "/master",
-             glibc_url, glibc_download_path]
-    run_cmd('download GCC source', args)
+    args = ['cp', '-a', glibc_dev, glibc_download_path]
+    run_cmd('download glibc source', args)
 
     # Patch GLIBC
-    glibc_patch_path = os.path.join(base_path, 'patches', 'glibc',
-                                    'glibc-{}.patch'.format(glibc_version))
-    with open(glibc_patch_path, 'r') as patch_file:
-        print('Patching GLIBC...')
-        args = ['patch', '-p1', '-d', glibc_download_path]
-        run_cmd('patch GLIBC', args, patch_file)
+#    glibc_patch_path = os.path.join(base_path, 'patches', 'glibc',
+#                                    'glibc-{}.patch'.format(glibc_version))
+#    with open(glibc_patch_path, 'r') as patch_file:
+#        print('Patching GLIBC...')
+#        args = ['patch', '-p1', '-d', glibc_download_path]
+#        run_cmd('patch GLIBC', args, patch_file)
 
     args = ['git', 'clone', '--depth', '1', '-b', linux_version, linux_url,
             linux_download_path]
