@@ -103,18 +103,22 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		err = 0;
 		switch (dst_arch) {
 			case ARCH_AARCH64:
-				err = !REWRITE_STACK(regs_src, regs_dst, dst_arch);
-				regs_dst.aarch.__magic = 0xAABCBDEADBEAF; 
-        			dump_regs_aarch64(&regs_dst.aarch, LOG_FILE);
+				err = !REWRITE_STACK(regs_src, regs_dst,
+						     dst_arch);
+				regs_dst.aarch.__magic = 0xAABCBDEADBEAF;
+				dump_regs_aarch64(&regs_dst.aarch, LOG_FILE);
 				break;
 			case ARCH_X86_64:
-				err = !REWRITE_STACK(regs_src, regs_dst, dst_arch);
-				regs_dst.x86.__magic = 0xA8664DEADBEAF; 
-        			dump_regs_x86_64(&regs_dst.x86, LOG_FILE);
+				err = !REWRITE_STACK(regs_src, regs_dst,
+						     dst_arch);
+				regs_dst.x86.__magic = 0xA8664DEADBEAF;
+				dump_regs_x86_64(&regs_dst.x86, LOG_FILE);
 				break;
 			case ARCH_POWERPC64:
-				err = !REWRITE_STACK(regs_src, regs_dst, dst_arch);
-        			dump_regs_powerpc64(&regs_dst.powerpc, LOG_FILE);
+				err = !REWRITE_STACK(regs_src, regs_dst,
+						     dst_arch);
+				dump_regs_powerpc64(&regs_dst.powerpc,
+						    LOG_FILE);
 				break;
 			default: assert(0 && "Unsupported architecture!");
 		}
@@ -123,7 +127,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 			return;
 		}
 		fprintf(stdout, "dest arch is %d\n", dst_arch);
-      		tls_dst = get_thread_pointer(GET_TLS_POINTER, dst_arch);
+		tls_dst = get_thread_pointer(GET_TLS_POINTER, dst_arch);
 		fprintf(stdout, "%s %d\n", __func__, __LINE__);
 		set_restore_context(1);
 		fprintf(stdout, "%s %d\n", __func__, __LINE__);
@@ -132,7 +136,10 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		sigset_t old_sig_set;
 		sigset_t new_sig_set;
 		sigemptyset(&new_sig_set);
-		//sigfillset(&new_sig_set, SIGALRM); sigdelset(&new_sig_set, SIGALRM);
+
+		//sigfillset(&new_sig_set, SIGALRM);
+		//sigdelset(&new_sig_set, SIGALRM);
+
 		sigaddset(&new_sig_set, SIGALRM);
 		sigprocmask(SIG_UNBLOCK, &new_sig_set, &old_sig_set);
 		raise(SIGALRM); /* wil be catched by ptrace */
