@@ -235,7 +235,7 @@ void remote_debug_init(int nid)
   {
 #if _LOG == 1
     char fn[32];
-    snprintf(fn, 128, "/tmp/node-%d.log", nid);
+    snprintf(fn, 32, "/tmp/node-%d.log", nid);
     debug_info[nid].fd = open(fn, O_CREAT | O_APPEND);
 #endif
     act.sa_sigaction = segfault_handler;
