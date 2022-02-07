@@ -15048,7 +15048,7 @@ index 4a8e3cca3493..7c60a52dfef6 100644
    DP << getMsgStr();
    if (getLocCookie())
 diff --git a/llvm/lib/MC/MCObjectFileInfo.cpp b/llvm/lib/MC/MCObjectFileInfo.cpp
-index 9f555abe1404..ff2c63ca1452 100644
+index 9f555abe1404..1432a0494c64 100644
 --- a/llvm/lib/MC/MCObjectFileInfo.cpp
 +++ b/llvm/lib/MC/MCObjectFileInfo.cpp
 @@ -285,6 +285,7 @@ void MCObjectFileInfo::initMachOMCObjectFileInfo(const Triple &T) {
@@ -15059,17 +15059,14 @@ index 9f555abe1404..ff2c63ca1452 100644
    StackMapSection = Ctx->getMachOSection("__LLVM_STACKMAPS", "__llvm_stackmaps",
                                           0, SectionKind::getMetadata());
  
-@@ -469,6 +470,16 @@ void MCObjectFileInfo::initELFMCObjectFileInfo(const Triple &T, bool Large) {
+@@ -469,6 +470,13 @@ void MCObjectFileInfo::initELFMCObjectFileInfo(const Triple &T, bool Large) {
    DwarfTUIndexSection =
        Ctx->getELFSection(".debug_tu_index", DebugSecType, 0);
  
 +  UnwindAddrRangeSection =
-+      Ctx->getELFSection(".stack_transform.unwind_arange", ELF::SHT_PROGBITS,
-+                         0, sizeof(uint64_t) + sizeof(uint64_t),
-+			 "");
++    Ctx->getELFSection(".stack_transform.unwind_arange", ELF::SHT_PROGBITS, 0);
 +  UnwindInfoSection =
-+      Ctx->getELFSection(".stack_transform.unwind", ELF::SHT_PROGBITS,
-+			 0, sizeof(uint16_t) + sizeof(int16_t), "");
++    Ctx->getELFSection(".stack_transform.unwind", ELF::SHT_PROGBITS, 0);
 +  UnwindAddrRangeSection->setAlignment(sizeof(uint64_t));
 +  UnwindInfoSection->setAlignment(sizeof(uint16_t) + sizeof(int16_t));
 +
