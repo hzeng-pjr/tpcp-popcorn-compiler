@@ -1236,6 +1236,20 @@ def install_utils(base_path, install_path, num_threads):
         if item != 'README':
             shutil.copy(s, d)
 
+    #=====================================================
+    # PREPARE SETPATH SCRIPT
+    #=====================================================
+    setpath = """export POPCORN={}
+
+DEPS=${HOME}/rtl/popcorn/deps/inst
+export PATH=${POPCORN}/bin:${POPCORN}/aarch64/bin:${DEPS}/bin:$PATH
+"""
+
+    f = open ("setpath".format(install_path), "w")
+    f.write (setpath)
+    f.close ()
+
+
 def build_namespace(base_path):
     cur_dir = os.getcwd()
 
