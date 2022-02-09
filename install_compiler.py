@@ -1241,12 +1241,12 @@ def install_utils(base_path, install_path, num_threads):
     #=====================================================
     setpath = """export POPCORN={}
 
-DEPS=${HOME}/rtl/popcorn/deps/inst
-export PATH=${POPCORN}/bin:${POPCORN}/aarch64/bin:${DEPS}/bin:$PATH
+DEPS=${{HOME}}/rtl/popcorn/deps/inst
+export PATH=${{POPCORN}}/bin:${{POPCORN}}/aarch64/bin:${{DEPS}}/bin:$PATH
 """
 
-    f = open ("setpath".format(install_path), "w")
-    f.write (setpath)
+    f = open ("setpath", "w")
+    f.write (setpath.format(install_path))
     f.close ()
 
 
