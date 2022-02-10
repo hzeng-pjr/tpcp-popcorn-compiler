@@ -252,7 +252,7 @@ def postprocess_args(args):
         args.llvm_clang_install = True
         args.binutils_install = True
         args.gcc_glibc_install = True
-        args.musl_install = True
+        args.musl_install = False
         args.libelf_install = True
         args.libopenpop_install = True
         args.stacktransform_install = True
@@ -572,23 +572,24 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
     run_cmd('download Linux Kernel source', args)
 
     for target in install_targets:
-        target_path = os.path.join(install_path,
-                                   target + '-popcorn-linux-gnu')
-        sysroot = os.path.join(install_path, target_path, 'sysroot')
+        sysroot = os.path.join(install_path, target)
         sysroot_usr = os.path.join(sysroot, 'usr')
-        libdir_path = os.path.join(install_path, target_path, 'lib')
+        libdir_path = os.path.join(install_path, sysroot, 'lib')
         llvm_target_path = os.path.join(install_path, target)
 
         # Prepare the sysroot
-        args = ['rm', '-rf', sysroot]
-        run_cmd('cleanup sysroot for ' + target, args)
-        os.makedirs(sysroot, exist_ok=True)
+        if not os.path.exists(sysroot):
+            os.makedirs(sysroot, exist_ok=True)
+
         os.chdir(linux_download_path)
         args = ['make', 'ARCH={}'.format(linux_targets[target]),
                 'INSTALL_HDR_PATH="{}"'.format(sysroot),
                 'headers_install']
         run_cmd('Install Linux headers', args)
-        shutil.copytree(sysroot, sysroot_usr)
+        args = ['make', 'ARCH={}'.format(linux_targets[target]),
+                'INSTALL_HDR_PATH="{}"'.format(sysroot_usr),
+                'headers_install']
+        run_cmd('Install Linux headers', args)
 
         # Certain applications, such as H-container redis, expect
         # $INST/target/include to be populated with the Linux headers
@@ -873,23 +874,24 @@ def install_glibc(base_path, install_path, install_targets, num_threads):
     run_cmd('download Linux Kernel source', args)
 
     for target in install_targets:
-        target_path = os.path.join(install_path,
-                                   target + '-popcorn-linux-gnu')
-        sysroot = os.path.join(install_path, target_path, 'sysroot')
+        sysroot = os.path.join(install_path, target)
         sysroot_usr = os.path.join(sysroot, 'usr')
-        libdir_path = os.path.join(install_path, target_path, 'lib')
+        libdir_path = os.path.join(install_path, sysroot, 'lib')
         llvm_target_path = os.path.join(install_path, target)
 
         # Prepare the sysroot
-        args = ['rm', '-rf', sysroot]
-        run_cmd('cleanup sysroot for ' + target, args)
-        os.makedirs(sysroot, exist_ok=True)
+        if not os.path.exists(sysroot):
+            os.makedirs(sysroot, exist_ok=True)
+
         os.chdir(linux_download_path)
         args = ['make', 'ARCH={}'.format(linux_targets[target]),
                 'INSTALL_HDR_PATH="{}"'.format(sysroot),
                 'headers_install']
         run_cmd('Install Linux headers', args)
-        shutil.copytree(sysroot, sysroot_usr)
+        args = ['make', 'ARCH={}'.format(linux_targets[target]),
+                'INSTALL_HDR_PATH="{}"'.format(sysroot_usr),
+                'headers_install']
+        run_cmd('Install Linux headers', args)
 
         # Certain applications, such as H-container redis, expect
         # $INST/target/include to be populated with the Linux headers
@@ -1019,14 +1021,9 @@ def install_libelf(base_path, install_path, target, num_threads):
         run_cmd('clean libelf', ['make', 'distclean'])
 
     print("Configuring libelf ({})...".format(target))
-    compiler = os.path.join(target_install_path, 'bin', 'musl-clang')
-    libelf_cflags = "-O3 -popcorn-alignment"
-
-#    # This is necessary for shared libraries
-#    if target == "x86_64":
-#        compiler = os.path.join(install_path, 'bin',
-#                                target + '-popcorn-linux-gnu-gcc')
-#        libelf_cflags = "-O3"
+    compiler = os.path.join(install_path, 'bin',
+			    target + '-popcorn-linux-gnu-gcc')
+    libelf_cflags = "-O3"
 
     args = ' '.join(['CC={}'.format(compiler),
                      'CFLAGS="{}"'.format(libelf_cflags),
@@ -1144,9 +1141,9 @@ def install_migration(base_path, install_path, num_threads, libmigration_type,
         elif enable_libmigration_timing:
             flags += 'timing'
         args += [flags]
-    run_cmd('make libopenpop', args)
+    run_cmd('make migration', args)
     args += ['install']
-    run_cmd('install libopenpop', args)
+    run_cmd('install migration', args)
 
     os.chdir(cur_dir)
 
