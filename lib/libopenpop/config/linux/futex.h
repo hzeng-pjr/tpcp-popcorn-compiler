@@ -35,7 +35,7 @@
 
 #define _GNU_SOURCE 
 #include <unistd.h>
-#include_next <futex.h>
+#include_next <linux/futex.h>
 
 #pragma GCC visibility pop
 
