@@ -111,7 +111,9 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		close (pcn_server_sockfd);
 
 		_dl_rio_populate_dso_entries ();
+		print_all_dso ();
 		unload_libs ();
+		print ("unload complete\n");
 
 		GET_LOCAL_REGSET(regs_src);
 

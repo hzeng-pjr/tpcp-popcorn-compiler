@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/uio.h>
 #include <elf.h>
 #include <errno.h>
 #include <sys/auxv.h>
@@ -35,6 +36,12 @@ int
 do_write (int fd, const void *buf, unsigned long count)
 {
   return __syscall3 (SYS_write, fd, (uintptr_t) buf, count);
+}
+
+int
+do_writev (int fd, const struct iovec *iov, int iovcnt)
+{
+  return __syscall3 (SYS_writev, fd, (uintptr_t) iov, iovcnt);
 }
 
 ssize_t
@@ -69,6 +76,23 @@ void
 do_exit (int status)
 {
   __syscall1 (SYS_exit, status);
+}
+
+int
+do_getpid ()
+{
+  return __syscall0 (SYS_getpid);
+}
+
+int
+do_strlen (char *a)
+{
+  int i;
+
+  for (i = 0; a[i] != '\0'; i++)
+    ;
+
+  return i;
 }
 
 int
