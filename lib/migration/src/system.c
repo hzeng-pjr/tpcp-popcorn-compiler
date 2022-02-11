@@ -107,9 +107,9 @@ unload_libs ()
 	ret = do_munmap ((void *)me[i].start, me[i].size);
 
       if (ret)
-	print ("munmap failed\n");
+	do_printf ("munmap %u of %u failed\n", i, pcn_data->num_maps);
       else
-	print ("munmap success\n");
+	do_printf ("munmap %u of %u success\n", i, pcn_data->num_maps);
     }
 }
 

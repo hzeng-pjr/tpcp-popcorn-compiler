@@ -10,7 +10,7 @@ const char _itoa_lower_digits[16] = "0123456789abcdef";
    also has to be present and it is never about speed when these
    functions are used.  */
 char *
-_itoa (unsigned long long int value, char *buflim, unsigned int base,
+pcn_itoa (unsigned long long int value, char *buflim, unsigned int base,
        int upper_case)
 {
   assert (! upper_case);
@@ -26,7 +26,7 @@ _itoa (unsigned long long int value, char *buflim, unsigned int base,
    the formats and flags needed and can handle only up to 64 stripes in
    the output.  */
 static void
-_dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
+pcn_dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
 {
 # define NIOVMAX 64
   struct iovec iov[NIOVMAX];
@@ -47,7 +47,7 @@ _dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
 	      char *p;
 	      pid = do_getpid ();
 	      assert (pid >= 0 && sizeof (pid_t) <= 4);
-	      p = _itoa (pid, &pidbuf[10], 10, 0);
+	      p = pcn_itoa (pid, &pidbuf[10], 10, 0);
 	      while (p > pidbuf)
 		*--p = ' ';
 	      pidbuf[10] = ':';
@@ -135,7 +135,7 @@ _dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
 		   having more than one integer formatting in a call.  */
 		char *buf = (char *) __builtin_alloca (3 * sizeof (unsigned long int));
 		char *endp = &buf[3 * sizeof (unsigned long int)];
-		char *cp = _itoa (num, endp, *fmt == 'x' ? 16 : 10, 0);
+		char *cp = pcn_itoa (num, endp, *fmt == 'x' ? 16 : 10, 0);
 
 		/* Pad to the width the user specified.  */
 		if (width != -1)
@@ -164,7 +164,7 @@ _dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
 	      break;
 
 	    default:
-	      assert (! "invalid format specifier");
+	      error ("invalid format specifier");
 	    }
 	  ++fmt;
 	}
@@ -199,7 +199,7 @@ do_printf (const char *fmt, ...)
   int stdout = 1; // stdout
 
   va_start (arg, fmt);
-  _dl_debug_vdprintf (stdout, 0, fmt, arg);
+  pcn_dl_debug_vdprintf (stdout, 0, fmt, arg);
   va_end (arg);
 }
 
