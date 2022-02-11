@@ -11,7 +11,7 @@ COMMON         := $(shell readlink -f ../../common)
 
 CC			:= gcc
 CFLAGS		:= -O3 -g -Wall -Iinclude -I$(COMMON)/include \
-		   -I$(POPCORN)/x86_64/include -I$(POPCORN)/x86_64/usr/include
+		   -I$(POPCORN)/x86_64/include
 LDFLAGS	:= -static
 LIB    	:= -lelf -L$(POPCORN)/x86_64/lib
 

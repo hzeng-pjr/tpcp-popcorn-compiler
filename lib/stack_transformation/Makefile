@@ -55,8 +55,7 @@ POPCORN_AARCH64 := $(POPCORN)/aarch64
 BUILD_AARCH64 := $(BUILD)/aarch64
 LIB_AARCH64   := $(BUILD_AARCH64)/libstack-transform.a
 CC_AARCH64    := $(CC) -target aarch64-linux-gnu
-LOC_AARCH64   := $(LOC) -isystem $(POPCORN_AARCH64)/include \
-		 -isystem $(POPCORN_AARCH64)/usr/include
+LOC_AARCH64   := $(LOC) -isystem $(POPCORN_AARCH64)/include
 
 LIB_OBJ_AARCH64      := $(subst $(SRC),$(BUILD_AARCH64),$(LIB_SRC:.c=.o))
 LIB_ARCH_OBJ_AARCH64 := $(subst $(SRC),$(BUILD_AARCH64),$(LIB_ARCH_SRC:.c=.o))
@@ -70,8 +69,7 @@ POPCORN_X86_64 := $(POPCORN)/x86_64
 BUILD_X86_64 := $(BUILD)/x86_64
 LIB_X86_64   := $(BUILD_X86_64)/libstack-transform.a
 CC_X86_64    := $(CC) -target x86_64-linux-gnu
-LOC_X86_64   := $(LOC) -isystem $(POPCORN_X86_64)/include -isystem \
-		$(POPCORN_X86_64)/usr/include
+LOC_X86_64   := $(LOC) -isystem $(POPCORN_X86_64)/include
 
 LIB_OBJ_X86_64      := $(subst $(SRC),$(BUILD_X86_64),$(LIB_SRC:.c=.o))
 LIB_ARCH_OBJ_X86_64 := $(subst $(SRC),$(BUILD_X86_64),$(LIB_ARCH_SRC:.c=.o))

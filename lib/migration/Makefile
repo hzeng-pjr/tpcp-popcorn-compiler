@@ -37,11 +37,9 @@ CFLAGS_X86     := $(CFLAGS) -target x86_64-linux-gnu
 
 COMMON      := $(shell readlink -f ../../common/include)
 INC         := -I./include -I$(COMMON)
-INC_ARM     := $(INC) -I$(POPCORN_ARM)/include \
-	       -isystem $(POPCORN_ARM)/usr/include
+INC_ARM     := $(INC) -isystem $(POPCORN_ARM)/include
 INC_POWERPC := $(INC) -I$(POPCORN_POWERPC)/include
-INC_X86     := $(INC) -I$(POPCORN_X86)/include \
-	       -isystem $(POPCORN_X86)/usr/include
+INC_X86     := $(INC) -isystem $(POPCORN_X86)/include
 
 OPT       := $(POPCORN)/bin/opt
 OPT_FLAGS := $(OPT_LEVEL) \

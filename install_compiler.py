@@ -573,7 +573,7 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
 
     for target in install_targets:
         sysroot = os.path.join(install_path, target)
-        sysroot_usr = os.path.join(sysroot, 'usr')
+        sysroot_inc = os.path.join(sysroot, 'include')
         libdir_path = os.path.join(install_path, sysroot, 'lib')
         llvm_target_path = os.path.join(install_path, target)
 
@@ -584,10 +584,6 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
         os.chdir(linux_download_path)
         args = ['make', 'ARCH={}'.format(linux_targets[target]),
                 'INSTALL_HDR_PATH="{}"'.format(sysroot),
-                'headers_install']
-        run_cmd('Install Linux headers', args)
-        args = ['make', 'ARCH={}'.format(linux_targets[target]),
-                'INSTALL_HDR_PATH="{}"'.format(sysroot_usr),
                 'headers_install']
         run_cmd('Install Linux headers', args)
 
@@ -647,7 +643,9 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
         os.chdir(glibc_stage_1_dir)
 
         args = [glibc_download_path + '/configure',
-                '--prefix=/usr',
+                '--prefix=/',
+                '--exec-prefix=/',
+                '--oldincludedir=/include',
                 '--target={}-popcorn-linux-gnu'.format(target),
                 '--host={}-popcorn-linux-gnu'.format(target),
                 '--enable-shared',
@@ -668,27 +666,27 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
                 'install_root={}'.format(sysroot)]
         run_cmd('Build glibc Stage 1 for ' + target, args)
 
-        stubs_h = os.path.join(sysroot, 'usr', 'include', 'gnu', 'stubs.h')
+        stubs_h = os.path.join(sysroot, 'include', 'gnu', 'stubs.h')
         pathlib.Path(stubs_h).touch()
 
         src = os.path.join(glibc_download_path, "include", "features.h")
-        dst = os.path.join(sysroot, 'usr', 'include', "features.h")
+        dst = os.path.join(sysroot,'include', "features.h")
         shutil.copyfile(src, dst)
 
         src = os.path.join(glibc_stage_1_dir, 'bits', 'stdio_lim.h')
-        dst = os.path.join(sysroot, 'usr', 'include', 'bits', 'stdio_lim.h')
+        dst = os.path.join(sysroot, 'include', 'bits', 'stdio_lim.h')
         shutil.copyfile(src, dst)
 
         args = ['make', 'csu/subdir_lib']
         run_cmd('make csu/subdir_lib for ' + target, args)
 
-        sysroot_lib = os.path.join(sysroot, 'lib')
-        shutil.rmtree(sysroot_lib, ignore_errors=True)
-        os.mkdir(sysroot_lib)
-
+        if not os.path.exists(sysroot + "/lib"):
+            os.makedirs(sysroot + "/lib", exist_ok=True)
+        
         src = os.path.join(glibc_stage_1_dir, 'csu')
         dst = os.path.join(sysroot, 'lib')
         for i in ['crt1.o', 'crti.o', 'crtn.o']:
+            print ("cp {} {}".format(src + "/" + i, dst + "/" + i))
             shutil.copyfile(os.path.join(src, i), os.path.join(dst, i))
 
         args = ['{}-linux-gnu-gcc'.format(target),
@@ -707,6 +705,8 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
 
         args = [gcc_download_path + '/configure',
                 '--prefix={}'.format(install_path),
+                '--with-native-system-header-dir=/include',
+                '--oldincludedir=/include',
                 '--target={}-popcorn-linux-gnu'.format(target),
                 '--with-sysroot={}'.format(sysroot),
                 '--with-local-prefix={}'.format(sysroot),
@@ -778,8 +778,9 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
                 os.remove(f)
 
         args = [glibc_download_path + '/configure',
-                '--prefix=/usr',
-                '--libdir=/usr/lib',
+                '--prefix=/',
+                '--exec-prefix=/',
+                '--oldincludedir=/include',
                 '--with-libdir={}'.format(libdir_path),
                 '--target={}-popcorn-linux-gnu'.format(target),
                 '--host={}-popcorn-linux-gnu'.format(target),
@@ -818,6 +819,8 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
         os.chdir(gcc_stage_3_dir)
 
         args = [gcc_download_path + '/configure',
+                '--with-native-system-header-dir=/include',
+                '--oldincludedir=/include',
                 '--target={}-popcorn-linux-gnu'.format(target),
                 '--with-sysroot={}'.format(sysroot),
                 '--with-local-prefix={}'.format(sysroot),
@@ -875,7 +878,6 @@ def install_glibc(base_path, install_path, install_targets, num_threads):
 
     for target in install_targets:
         sysroot = os.path.join(install_path, target)
-        sysroot_usr = os.path.join(sysroot, 'usr')
         libdir_path = os.path.join(install_path, sysroot, 'lib')
         llvm_target_path = os.path.join(install_path, target)
 
@@ -886,10 +888,6 @@ def install_glibc(base_path, install_path, install_targets, num_threads):
         os.chdir(linux_download_path)
         args = ['make', 'ARCH={}'.format(linux_targets[target]),
                 'INSTALL_HDR_PATH="{}"'.format(sysroot),
-                'headers_install']
-        run_cmd('Install Linux headers', args)
-        args = ['make', 'ARCH={}'.format(linux_targets[target]),
-                'INSTALL_HDR_PATH="{}"'.format(sysroot_usr),
                 'headers_install']
         run_cmd('Install Linux headers', args)
 
@@ -910,7 +908,9 @@ def install_glibc(base_path, install_path, install_targets, num_threads):
         os.chdir(glibc_stage_1_dir)
 
         args = [glibc_download_path + '/configure',
-                '--prefix=/usr',
+                '--prefix=/',
+                '--exec-prefix=/',
+                '--oldincludedir=/include',
                 '--target={}-popcorn-linux-gnu'.format(target),
                 '--host={}-popcorn-linux-gnu'.format(target),
                 '--enable-shared',
@@ -931,27 +931,24 @@ def install_glibc(base_path, install_path, install_targets, num_threads):
                 'install_root={}'.format(sysroot)]
         run_cmd('Build glibc Stage 1 for ' + target, args)
 
-        stubs_h = os.path.join(sysroot, 'usr', 'include', 'gnu', 'stubs.h')
+        stubs_h = os.path.join(sysroot, 'include', 'gnu', 'stubs.h')
         pathlib.Path(stubs_h).touch()
 
         src = os.path.join(glibc_download_path, "include", "features.h")
-        dst = os.path.join(sysroot, 'usr', 'include', "features.h")
+        dst = os.path.join(sysroot, 'include', "features.h")
         shutil.copyfile(src, dst)
 
         src = os.path.join(glibc_stage_1_dir, 'bits', 'stdio_lim.h')
-        dst = os.path.join(sysroot, 'usr', 'include', 'bits', 'stdio_lim.h')
+        dst = os.path.join(sysroot, 'include', 'bits', 'stdio_lim.h')
         shutil.copyfile(src, dst)
 
         args = ['make', 'csu/subdir_lib']
         run_cmd('make csu/subdir_lib for ' + target, args)
 
-        sysroot_lib = os.path.join(sysroot, 'lib')
-        shutil.rmtree(sysroot_lib, ignore_errors=True)
-        os.mkdir(sysroot_lib)
-
         src = os.path.join(glibc_stage_1_dir, 'csu')
         dst = os.path.join(sysroot, 'lib')
         for i in ['crt1.o', 'crti.o', 'crtn.o']:
+            #print ("cp {} {}".format(src + "/" + i, dst + "/" + i))
             shutil.copyfile(os.path.join(src, i), os.path.join(dst, i))
 
         args = ['{}-linux-gnu-gcc'.format(target),
@@ -975,8 +972,9 @@ def install_glibc(base_path, install_path, install_targets, num_threads):
                 os.remove(f)
 
         args = [glibc_download_path + '/configure',
-                '--prefix=/usr',
-                '--libdir=/usr/lib',
+                '--prefix=/',
+                '--exec-prefix=/',
+                '--oldincludedir=/include',
                 '--with-libdir={}'.format(libdir_path),
                 '--target={}-popcorn-linux-gnu'.format(target),
                 '--host={}-popcorn-linux-gnu'.format(target),
@@ -1077,12 +1075,14 @@ def install_libopenpop(base_path, install_path, target, first_target, num_thread
 
     args = ' '.join(['CC={}/bin/clang'.format(install_path),
                      'CFLAGS="-target {}-popcorn-linux-gnu -O2 -g -Wall -fno-common ' \
-                             '-nostdinc -isystem {} ' \
+                             '-isystem {} ' \
                              '-popcorn-metadata ' \
                              '-popcorn-target={}-linux-gnu"' \
                              .format(target, include_dir, target),
-                     'LDFLAGS="-nostdlib -L{} -B{}"'.format(lib_dir, cross_path, install_path),
-                     'LIBS="{}/crt1.o -lc {}"'.format(lib_dir, libgcc),
+                     'LDFLAGS="-L{} -B{} --sysroot={}"'
+                               .format(lib_dir,cross_path,
+                                       target_install_path),
+                     'LIBS="-lc {}"'.format(libgcc),
                      './configure',
                      '--prefix={}'.format(target_install_path),
                      '--target={}-linux-gnu'.format(target),
