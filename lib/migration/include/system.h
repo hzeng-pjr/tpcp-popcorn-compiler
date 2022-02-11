@@ -38,7 +38,7 @@ extern unsigned long get_base_address (Elf64_Phdr *phdrs, int phnum,
 extern void restore_rw_segments (Elf64_Phdr *phdrs, int phnum,
 				 unsigned long entry);
 extern void reset_dynamic (Elf64_Phdr *phdrs, int phnum, unsigned long entry,
-			   char *exec);
+			   char *exec, Elf64_Ehdr *ehdr, int fd);
 extern void print_all_dso ();
 extern int main_function (int argc, char *argv[]);
 

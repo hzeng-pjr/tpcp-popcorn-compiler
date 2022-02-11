@@ -1,6 +1,7 @@
 #if _GBL_VARIABLE_MIGRATE == 1
 #include <stdio.h>
 #include <string.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <assert.h>
 #include <pthread.h>
@@ -14,6 +15,8 @@
 #include "internal.h"
 #include "mapping.h"
 #include "debug.h"
+#include "system.h"
+#include "io.h"
 
 
 /************************************************/
@@ -83,7 +86,14 @@ static void dummy(){printf("%s: called\n", __func__);};
 void
 __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *callback_data)
 {
-	int err;
+	Elf64_Ehdr ehdr;
+	Elf64_Phdr *phdrs;
+	int phnum;
+	unsigned long entry;
+	int i, fd;
+	struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
+	void *t, *ld_start;
+	int err, ret;
 
 	if (!get_restore_context())		// Invoke migration
 	{
@@ -95,8 +105,13 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		} regs_src;
 
 		printf ("pcn_server_port = %d\n", pcn_server_port);
+
+		/* Inform the I/O server of the impending migration.  */
 		pcn_migrate ();
 		close (pcn_server_sockfd);
+
+		_dl_rio_populate_dso_entries ();
+		unload_libs ();
 
 		GET_LOCAL_REGSET(regs_src);
 
@@ -154,6 +169,41 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 	// Note: TLS is now invalid until after migration!
 	//__set_thread_area(get_thread_pointer(GET_TLS_POINTER, CURRENT_ARCH));
 	set_restore_context(0);
+
+	/* Populate phdrs.  */
+	fd = do_open (pcn_data->argv[0], O_RDONLY, 0);
+	if (fd < 0)
+		error ("open failed");
+
+	ret = do_read (fd, &ehdr, sizeof (ehdr));
+	if (ret < 0)
+		error ("failed to read ELF header\n");
+
+	phnum = ehdr.e_phnum;
+	phdrs = __builtin_alloca (phnum * sizeof (Elf64_Phdr));
+
+	ret = do_read (fd, phdrs, phnum * sizeof (Elf64_Phdr));
+	if (ret < 0)
+		error ("failed to read ELF phdrs\n");
+
+	entry = ehdr.e_entry;
+	restore_rw_segments (phdrs, phnum, entry);
+	reset_dynamic (phdrs, phnum, entry, pcn_data->argv[0], &ehdr, fd);
+
+	do_close (fd);
+
+	pcn_data->pcn_entry = (unsigned long) &&pcn_cont;
+	ld_start = load_lib (pcn_data->maps[0].name); // Load ld-linux
+
+#if defined (__x86_64__)
+  asm volatile ("jmp *%0;\n\t" : : "r" (ld_start));
+#elif defined (__aarch64__)
+  asm volatile ("br %0;\n\t" : : "r" (ld_start));
+#else
+#error "Unsupported arch"
+#endif
+
+ pcn_cont:
 	pcn_server_sockfd = pcn_server_connect (pcn_server_ip);
 	printf ("pcn_server_port = %d\n", pcn_server_port);
 }

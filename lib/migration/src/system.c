@@ -360,44 +360,34 @@ restore_rw_segments (Elf64_Phdr *phdrs, int phnum, unsigned long entry)
 }
 
 void
-reset_dynamic (Elf64_Phdr *phdrs, int phnum, unsigned long entry, char *exec)
+reset_dynamic (Elf64_Phdr *phdrs, int phnum, unsigned long entry, char *exec,
+	       Elf64_Ehdr *ehdr, int fd)
 {
-  Elf64_Ehdr ehdr;
   Elf64_Shdr *shdrs;
-  int fd, ret, size;
+  int ret, size;
   unsigned long base = 0;
   unsigned long l1, l2 = 0;
   int i;
   char *strtab;
 
-  fd = do_open (exec, O_RDONLY, 0);
+  size = sizeof (Elf64_Shdr) * ehdr->e_shnum;
 
-  if (fd < 0)
-    error ("open failed");
-
-  ret = do_read (fd, &ehdr, sizeof (ehdr));
-
-  if (ret < 0)
-    error ("failed to read ELF header\n");
-
-  size = sizeof (Elf64_Shdr) * ehdr.e_shnum;
-
-  if (ehdr.e_type == ET_DYN)
+  if (ehdr->e_type == ET_DYN)
     base = get_base_address (phdrs, phnum, entry);
 
   shdrs = __builtin_alloca (size);
 
-  ret = do_pread (fd, shdrs, size, ehdr.e_shoff);
+  ret = do_pread (fd, shdrs, size, ehdr->e_shoff);
 
   if (ret < 0)
     error ("failed to read ELF section headers\n");
 
-  strtab = __builtin_alloca (shdrs[ehdr.e_shstrndx].sh_size);
+  strtab = __builtin_alloca (shdrs[ehdr->e_shstrndx].sh_size);
 
-  ret = do_pread (fd, strtab, shdrs[ehdr.e_shstrndx].sh_size,
-		  shdrs[ehdr.e_shstrndx].sh_offset);
+  ret = do_pread (fd, strtab, shdrs[ehdr->e_shstrndx].sh_size,
+		  shdrs[ehdr->e_shstrndx].sh_offset);
 
-  for (i = 0; i < ehdr.e_shnum; i++)
+  for (i = 0; i < ehdr->e_shnum; i++)
     {
       char *id = &strtab[shdrs[i].sh_name];
       void *mem;
@@ -408,8 +398,6 @@ reset_dynamic (Elf64_Phdr *phdrs, int phnum, unsigned long entry, char *exec)
 	  do_pread (fd, mem, shdrs[i].sh_size, shdrs[i].sh_offset);
 	}
     }
-
-  do_close (fd);
 }
 
 void
@@ -465,7 +453,7 @@ main_function (int argc, char *argv[])
   //pcn_break ();
 
   restore_rw_segments (phdrs, phnum, entry);
-  reset_dynamic (phdrs, phnum, entry, argv[0]);
+  reset_dynamic (phdrs, phnum, entry, argv[0], NULL, 0);
   //do_exit (EXIT_SUCCESS);
 
   //do_spin ();
