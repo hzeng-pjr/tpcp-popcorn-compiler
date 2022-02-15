@@ -103,6 +103,8 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 			struct regset_powerpc64 powerpc;
 			struct regset_x86_64 x86;
 		} regs_src;
+		sigset_t old_sig_set;
+		sigset_t new_sig_set;
 
 		printf ("pcn_server_port = %d\n", pcn_server_port);
 
@@ -116,6 +118,8 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		print ("unload complete\n");
 
 		GET_LOCAL_REGSET(regs_src);
+
+		do_printf ("GET_LOCAL_REGSET complete\n");
 
 		err = 0;
 		switch (dst_arch) {
@@ -137,31 +141,47 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 				dump_regs_powerpc64(&regs_dst.powerpc,
 						    LOG_FILE);
 				break;
-			default: assert(0 && "Unsupported architecture!");
+			default: error ("Unsupported architecture!");
 		}
 		if (err) {
-			fprintf(stderr, "Could not rewrite stack!\n");
+			do_printf("Could not rewrite stack!\n");
 			return;
 		}
-		fprintf(stdout, "dest arch is %d\n", dst_arch);
+		do_printf("dest arch is %d\n", dst_arch);
 		tls_dst = get_thread_pointer(GET_TLS_POINTER, dst_arch);
 		fprintf(stdout, "%s %d\n", __func__, __LINE__);
 		set_restore_context(1);
 		fprintf(stdout, "%s %d\n", __func__, __LINE__);
 		clear_migrate_flag();
-		signal(SIGALRM, dummy);
-		sigset_t old_sig_set;
-		sigset_t new_sig_set;
-		sigemptyset(&new_sig_set);
 
-		//sigfillset(&new_sig_set, SIGALRM);
-		//sigdelset(&new_sig_set, SIGALRM);
+		//signal(SIGALRM, dummy);
+		struct ksigaction kact, koact;
 
-		sigaddset(&new_sig_set, SIGALRM);
-		sigprocmask(SIG_UNBLOCK, &new_sig_set, &old_sig_set);
-		raise(SIGALRM); /* wil be catched by ptrace */
-		sigprocmask(SIG_SETMASK, &old_sig_set, NULL);
-		fprintf(stdout, "%s raising done %d\n", __func__, __LINE__);
+		kact.handler = dummy;
+		do_memset (&kact.mask, 0, sizeof (sigset_t));
+		kact.flags = 0;
+		kact.restorer = NULL;
+		do_rt_sigaction (SIGALRM, &kact, &koact, _NSIG / 8);
+
+		//sigemptyset(&new_sig_set);
+		do_memset (&new_sig_set, 0, sizeof (new_sig_set));
+
+		//sigaddset(&new_sig_set, SIGALRM);
+		do_sigaddset (&new_sig_set, SIGALRM);
+
+		//sigprocmask(SIG_UNBLOCK, &new_sig_set, &old_sig_set);
+		do_sigprocmask (SIG_UNBLOCK, &new_sig_set, &old_sig_set,
+				_NSIG / 8);
+
+		do_printf ("raising SIGALRM\n");
+
+		//raise(SIGALRM); /* wil be catched by ptrace */
+		do_kill (do_getpid (), SIGALRM);
+
+		//sigprocmask(SIG_SETMASK, &old_sig_set, NULL);
+		do_sigprocmask (SIG_UNBLOCK, &old_sig_set, NULL, NSIG / 8);
+
+		do_printf("%s raising done %d\n", __func__, __LINE__);
 		//while(1);
 		return;
 	}

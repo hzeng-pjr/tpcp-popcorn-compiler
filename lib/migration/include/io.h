@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <sys/mman.h>
+#include <signal.h>
 
 #if defined (__x86_64__)
 #define pcn_break()  do { asm volatile ("int3;"); } while (0)
@@ -11,6 +12,13 @@
 #else
 #define pcn_break() spin()
 #endif
+
+struct ksigaction {
+	void (*handler)(int);
+	unsigned long flags;
+	void (*restorer)(void);
+	unsigned mask[2];
+};
 
 struct iovec;
 
@@ -26,6 +34,13 @@ extern int do_open (const char *pathname, int flags, mode_t mode);
 extern int do_close (int fd);
 extern void do_exit (int status);
 extern int do_getpid ();
+extern int do_kill (pid_t pid, int sig);
+
+extern int do_rt_sigaction (int sig, struct ksigaction *kact,
+			    struct ksigaction *koact, int nr);
+extern int do_sigprocmask (int sig, sigset_t *set, sigset_t *oset, int nr);
+extern int do_sigaddset (sigset_t *set, int sig);
+
 extern int do_strlen ();
 extern int do_strcmp (char *a, char *b);
 extern void do_memset (void *s, int c, size_t n);

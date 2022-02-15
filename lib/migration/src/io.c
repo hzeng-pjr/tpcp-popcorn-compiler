@@ -10,7 +10,19 @@
 #include <elf.h>
 #include <errno.h>
 #include <sys/auxv.h>
+#include <signal.h>
 #include "syscall_arch.h"
+#include "io.h"
+
+/* Glibc: sysdeps/unix/sysv/linux/sigopts.h  */
+
+/* Return a mask that includes the bit for SIG only.  */
+# define __sigmask(sig) \
+  (((unsigned long int) 1) << (((sig) - 1) % (8 * sizeof (unsigned long int))))
+
+/* Return the word index for SIG.  */
+# define __sigword(sig) (((sig) - 1) / (8 * sizeof (unsigned long int)))
+
 
 void
 *do_mmap(void *addr, size_t length, int prot, int flags,
@@ -82,6 +94,37 @@ int
 do_getpid ()
 {
   return __syscall0 (SYS_getpid);
+}
+int
+do_kill (pid_t pid, int sig)
+{
+  return __syscall2 (SYS_kill, pid, sig);
+}
+
+int
+do_rt_sigaction (int sig, struct ksigaction *kact, struct ksigaction *koact,
+		 int nr)
+{
+  return __syscall4 (SYS_rt_sigaction,  sig, (uintptr_t) kact,
+		     (uintptr_t) koact, nr);
+}
+
+int
+do_sigprocmask (int sig, sigset_t *set, sigset_t *oset, int nr)
+{
+  return __syscall4 (SYS_rt_sigprocmask, sig, (uintptr_t) set,
+		     (uintptr_t) oset, nr);
+}
+
+int
+do_sigaddset (sigset_t *set, int sig)
+{
+  unsigned long int __mask = __sigmask (sig);
+  unsigned long int __word = __sigword (sig);
+
+  set->__val[__word] |= __mask;
+
+  return 0;
 }
 
 int
