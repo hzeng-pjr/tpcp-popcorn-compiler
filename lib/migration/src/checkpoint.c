@@ -106,7 +106,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		sigset_t old_sig_set;
 		sigset_t new_sig_set;
 
-		lio_printf ("pcn_server_port = %d\n", pcn_server_port);
+		lio_printf ("pcn_server_port = %u\n", pcn_server_port);
 
 		/* Inform the I/O server of the impending migration.  */
 		pcn_migrate ();

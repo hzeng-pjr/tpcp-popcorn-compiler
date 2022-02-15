@@ -401,7 +401,7 @@ reset_dynamic (Elf64_Phdr *phdrs, int phnum, unsigned long entry, char *exec,
 }
 
 void
-lio_print_all_dso ()
+print_all_dso ()
 {
   struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
   int i;
@@ -445,7 +445,7 @@ main_function (int argc, char *argv[])
 
   _dl_rio_populate_dso_entries ();
 
-  lio_print_all_dso ();
+  print_all_dso ();
   //lio_spin ();
 
   //pcn_break ();
