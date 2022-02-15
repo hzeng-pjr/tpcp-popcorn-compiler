@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <stdarg.h>
 #include <sys/uio.h>
-#include "io.h"
+#include "local_io.h"
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 const char _itoa_lower_digits[16] = "0123456789abcdef";
@@ -45,7 +45,7 @@ pcn_dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
 	  if (pid == 0)
 	    {
 	      char *p;
-	      pid = do_getpid ();
+	      pid = lio_getpid ();
 	      assert (pid >= 0 && sizeof (pid_t) <= 4);
 	      p = pcn_itoa (pid, &pidbuf[10], 10, 0);
 	      while (p > pidbuf)
@@ -151,7 +151,7 @@ pcn_dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
 	    case 's':
 	      /* Get the string argument.  */
 	      iov[niov].iov_base = va_arg (arg, char *);
-	      iov[niov].iov_len = do_strlen (iov[niov].iov_base);
+	      iov[niov].iov_len = lio_strlen (iov[niov].iov_base);
 	      if (prec != -1)
 		iov[niov].iov_len = MIN ((size_t) prec, iov[niov].iov_len);
 	      ++niov;
@@ -164,7 +164,7 @@ pcn_dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
 	      break;
 
 	    default:
-	      error ("invalid format specifier");
+	      lio_error ("invalid format specifier");
 	    }
 	  ++fmt;
 	}
@@ -187,13 +187,13 @@ pcn_dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
     }
 
   /* Finally write the result.  */
-  do_writev (fd, iov, niov);
+  lio_writev (fd, iov, niov);
 }
 
 
 /* Write to debug file.  */
 void
-do_printf (const char *fmt, ...)
+lio_printf (const char *fmt, ...)
 {
   va_list arg;
   int stdout = 1; // stdout

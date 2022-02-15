@@ -4,7 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/auxv.h>
-#include "io.h"
+#include <local_io.h>
 #include "system.h"
 
 /* FIXME: This is defined in glibc, or it should be.  */
@@ -20,24 +20,24 @@ unload_ldso (struct mmap_entries *me)
   size_t addr_min = SIZE_MAX, addr_max = 0;
   unsigned long map, base;
 
-  fd = do_open (me->name, O_RDONLY, 0);
+  fd = lio_open (me->name, O_RDONLY, 0);
 
   if (fd < 0)
-    error ("open failed\n");
+    lio_error ("open failed\n");
 
-  ret = do_read (fd, &ehdr, sizeof (ehdr));
+  ret = lio_read (fd, &ehdr, sizeof (ehdr));
 
   if (ret < 0)
-    error ("failed to read ELF header\n");
+    lio_error ("failed to read ELF header\n");
 
   size = sizeof (Elf64_Phdr) * ehdr.e_phnum;
 
   phdrs = __builtin_alloca (size);
 
-  ret = do_pread (fd, phdrs, size, ehdr.e_phoff);
+  ret = lio_pread (fd, phdrs, size, ehdr.e_phoff);
 
   if (ret < 0)
-    error ("failed to read ELF segment headers\n");
+    lio_error ("failed to read ELF segment headers\n");
 
   /* Populate addr_{min,max}.  */
   for (i = 0; i < ehdr.e_phnum; i++)
@@ -63,15 +63,15 @@ unload_ldso (struct mmap_entries *me)
       this_min = phdrs[i].p_vaddr & -PAGE_SIZE;
       this_max = phdrs[i].p_vaddr + phdrs[i].p_memsz + PAGE_SIZE-1 & -PAGE_SIZE;
 
-      ret = do_munmap ((void *)(base + this_min), this_max - this_min);
+      ret = lio_munmap ((void *)(base + this_min), this_max - this_min);
 
       if (ret)
-	print ("ld.so munmap failed\n");
+	lio_print ("ld.so munmap failed\n");
     }
 
-  do_close (fd);
+  lio_close (fd);
 
-  print ("Unloaded ld.so!\n");
+  lio_print ("Unloaded ld.so!\n");
 
   return 0;
 }
@@ -104,12 +104,12 @@ unload_libs ()
       if (i == ld_linux)
 	ret = unload_ldso (&pcn_data->maps[i]);
       else
-	ret = do_munmap ((void *)me[i].start, me[i].size);
+	ret = lio_munmap ((void *)me[i].start, me[i].size);
 
       if (ret)
-	do_printf ("munmap %u of %u failed\n", i, pcn_data->num_maps);
+	lio_printf ("munmap %u of %u failed\n", i, pcn_data->num_maps);
       else
-	do_printf ("munmap %u of %u success\n", i, pcn_data->num_maps);
+	lio_printf ("munmap %u of %u success\n", i, pcn_data->num_maps);
     }
 }
 
@@ -137,38 +137,38 @@ load_lib (char *lib)
   unsigned long map, base;
   struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
 
-  print ("loading ");
-  print (lib);
-  print (" ...\n");
+  lio_print ("loading ");
+  lio_print (lib);
+  lio_print (" ...\n");
 
   for (i = 0; i < pcn_data->num_maps; i++)
-    if (do_strcmp (lib, pcn_data->maps[i].name) == 0)
+    if (lio_strcmp (lib, pcn_data->maps[i].name) == 0)
       {
 	old_map = i;
 	break;
       }
 
   if (old_map == -1)
-    error ("failed to detect previous mapping");
+    lio_error ("failed to detect previous mapping");
 
-  fd = do_open (lib, O_RDONLY, 0);
+  fd = lio_open (lib, O_RDONLY, 0);
 
   if (fd < 0)
-    error ("open failed\n");
+    lio_error ("open failed\n");
 
-  ret = do_read (fd, &ehdr, sizeof (ehdr));
+  ret = lio_read (fd, &ehdr, sizeof (ehdr));
 
   if (ret < 0)
-    error ("failed to read ELF header\n");
+    lio_error ("failed to read ELF header\n");
 
   size = sizeof (Elf64_Phdr) * ehdr.e_phnum;
 
   phdrs = __builtin_alloca (size);
 
-  ret = do_pread (fd, phdrs, size, ehdr.e_phoff);
+  ret = lio_pread (fd, phdrs, size, ehdr.e_phoff);
 
   if (ret < 0)
-    error ("failed to read ELF segment headers\n");
+    lio_error ("failed to read ELF segment headers\n");
 
   /* Populate addr_{min,max}.  */
   for (i = 0; i < ehdr.e_phnum; i++)
@@ -205,12 +205,12 @@ load_lib (char *lib)
 //  off_start &= -PAGE_SIZE;
 //  total_size = addr_max - addr_min + off_start;
 
-//  map = (unsigned long) do_mmap ((void *)pcn_data->maps[old_map].start,
+//  map = (unsigned long) lio_mmap ((void *)pcn_data->maps[old_map].start,
 //				 pcn_data->maps[old_map].size, elf_prot,
 //				 MAP_PRIVATE | MAP_FIXED, fd, off_start);
 //
 //  if ((long) map < 0)
-//    error ("mmap failed\n");
+//    lio_error ("mmap failed\n");
 
   map = pcn_data->maps[old_map].start;
   base = map - addr_min;
@@ -240,36 +240,36 @@ load_lib (char *lib)
 //      if ((phdrs[i].p_vaddr & -PAGE_SIZE) == addr_min)
 //	{
 //	  unsigned long size = this_max - this_min;
-//	  do_munmap ((void *) (map + size), total_size - size);
+//	  lio_munmap ((void *) (map + size), total_size - size);
 //	  continue;
 //	}
 
-      ret = (long) do_mmap ((void *)(base + this_min), this_max - this_min,
+      ret = (long) lio_mmap ((void *)(base + this_min), this_max - this_min,
 			    elf_prot, MAP_PRIVATE | MAP_FIXED, fd, off_start);
       if (ret < 0)
-	error ("load segment: mmap failed\n");
+	lio_error ("load segment: mmap failed\n");
 
       if (phdrs[i].p_memsz > phdrs[i].p_filesz)
 	{
 	  size_t brk = (size_t) base + phdrs[i].p_vaddr + phdrs[i].p_filesz;
 	  size_t pgbrk = brk + PAGE_SIZE - 1 & - PAGE_SIZE;
-	  do_memset ((void *)brk, 0, pgbrk - brk & PAGE_SIZE - 1);
+	  lio_memset ((void *)brk, 0, pgbrk - brk & PAGE_SIZE - 1);
 	  if (pgbrk - (size_t) base < this_max)
 	    {
-	      ret = (long) do_mmap ((void *)pgbrk,
+	      ret = (long) lio_mmap ((void *)pgbrk,
 				    (size_t)base + this_max - pgbrk,
 				    elf_prot,
 				    MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS,
 				    -1, 0);
 	      if (ret < 0)
-		error ("failed to set up bss\n");
+		lio_error ("failed to set up bss\n");
 	    }
 	}
     }
 
-  do_close (fd);
+  lio_close (fd);
 
-  print ("success!\n");
+  lio_print ("success!\n");
 
   return (void *) (base + ehdr.e_entry);
 }
@@ -322,7 +322,7 @@ restore_rw_segments (Elf64_Phdr *phdrs, int phnum, unsigned long entry)
 
   base = get_base_address (phdrs, phnum, entry);
 
-  //printf ("%d phdrs detected; entry = %lx, base = %lx\n", phnum, entry, base);
+  //lio_printf ("%d phdrs detected; entry = %lx, base = %lx\n", phnum, entry, base);
 
   for (i = 0; i < phnum; i++)
     {
@@ -351,10 +351,10 @@ restore_rw_segments (Elf64_Phdr *phdrs, int phnum, unsigned long entry)
       if (phdrs[i].p_flags & PF_W)
 	{
 	  if (phdrs[i].p_vaddr < base)
-	    do_mprotect ((void *)(base + elf_min), elf_max - elf_min,
+	    lio_mprotect ((void *)(base + elf_min), elf_max - elf_min,
 			 elf_prot);
 	  else
-	    do_mprotect ((void *) elf_min, elf_max - elf_min, elf_prot);
+	    lio_mprotect ((void *) elf_min, elf_max - elf_min, elf_prot);
 	}
     }
 }
@@ -377,14 +377,14 @@ reset_dynamic (Elf64_Phdr *phdrs, int phnum, unsigned long entry, char *exec,
 
   shdrs = __builtin_alloca (size);
 
-  ret = do_pread (fd, shdrs, size, ehdr->e_shoff);
+  ret = lio_pread (fd, shdrs, size, ehdr->e_shoff);
 
   if (ret < 0)
-    error ("failed to read ELF section headers\n");
+    lio_error ("failed to read ELF section headers\n");
 
   strtab = __builtin_alloca (shdrs[ehdr->e_shstrndx].sh_size);
 
-  ret = do_pread (fd, strtab, shdrs[ehdr->e_shstrndx].sh_size,
+  ret = lio_pread (fd, strtab, shdrs[ehdr->e_shstrndx].sh_size,
 		  shdrs[ehdr->e_shstrndx].sh_offset);
 
   for (i = 0; i < ehdr->e_shnum; i++)
@@ -392,16 +392,16 @@ reset_dynamic (Elf64_Phdr *phdrs, int phnum, unsigned long entry, char *exec,
       char *id = &strtab[shdrs[i].sh_name];
       void *mem;
 
-      if (do_strcmp (id, ".got") == 0 || do_strcmp (id, ".got.plt") == 0)
+      if (lio_strcmp (id, ".got") == 0 || lio_strcmp (id, ".got.plt") == 0)
 	{
 	  mem = (void *) (base + shdrs[i].sh_addr);
-	  do_pread (fd, mem, shdrs[i].sh_size, shdrs[i].sh_offset);
+	  lio_pread (fd, mem, shdrs[i].sh_size, shdrs[i].sh_offset);
 	}
     }
 }
 
 void
-print_all_dso ()
+lio_print_all_dso ()
 {
   struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
   int i;
@@ -412,7 +412,7 @@ print_all_dso ()
       size = pcn_data->maps[i].size + PAGE_SIZE - 1;
       size &= -PAGE_SIZE;
 
-      printf ("%s: %lx - %lx (%lu / %lx)\n", pcn_data->maps[i].name,
+      lio_printf ("%s: %lx - %lx (%lu / %lx)\n", pcn_data->maps[i].name,
 	      pcn_data->maps[i].start,
 	      pcn_data->maps[i].start + pcn_data->maps[i].size, size,
 	      pcn_data->maps[i].start + size);
@@ -433,20 +433,20 @@ main_function (int argc, char *argv[])
   phdrs = (void *)getauxval (AT_PHDR);
   entry = getauxval (AT_ENTRY);
 
-  printf ("pid = %d\n", getpid ());
+  lio_printf ("pid = %d\n", getpid ());
 
-  pcn_data = do_mmap ((void *)DL_PCN_STATE, PAGE_SIZE, PROT_READ | PROT_WRITE,
+  pcn_data = lio_mmap ((void *)DL_PCN_STATE, PAGE_SIZE, PROT_READ | PROT_WRITE,
 		      MAP_PRIVATE | MAP_FIXED_NOREPLACE | MAP_ANONYMOUS, 0, 0);
 
   if (pcn_data == (void *)-1 || pcn_data == (void *) -EEXIST)
     pcn_data = (void *) DL_PCN_STATE;
 
-  printf ("arg = %p\n", pcn_data->arg);
+  lio_printf ("arg = %p\n", pcn_data->arg);
 
   _dl_rio_populate_dso_entries ();
 
-  print_all_dso ();
-  //do_spin ();
+  lio_print_all_dso ();
+  //lio_spin ();
 
   //pcn_break ();
   unload_libs ();
@@ -454,9 +454,9 @@ main_function (int argc, char *argv[])
 
   restore_rw_segments (phdrs, phnum, entry);
   reset_dynamic (phdrs, phnum, entry, argv[0], NULL, 0);
-  //do_exit (EXIT_SUCCESS);
+  //lio_exit (EXIT_SUCCESS);
 
-  //do_spin ();
+  //lio_spin ();
 
   pcn_data->pcn_entry = (unsigned long) &&pcn_cont;
   pcn_data->pcn_break = 1;
@@ -470,16 +470,16 @@ main_function (int argc, char *argv[])
 #elif defined (__aarch64__)
   asm volatile ("br %0;\n\t" : : "r" (ld_start));
 #else
-#error "Unsupported arch"
+#lio_error "Unsupported arch"
 #endif
 
-  do_spin ();
+  lio_spin ();
 
  pcn_cont:
   //pcn_break ();
-  print ("reloading libc complete!\n");
+  lio_print ("reloading libc complete!\n");
 
-  printf ("terminating\n");
+  lio_printf ("terminating\n");
   //spin ();
   //pcn_break ();
 

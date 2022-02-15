@@ -91,6 +91,7 @@ install-aarch64: $(LIB_AARCH64)
 	@cp $< $(POPCORN_AARCH64)/lib
 	@echo " [INSTALL] $(INC)/remote_io.h to $(POPCORN_AARCH64)/include"
 	@cp $(INC)/remote_io.h $(POPCORN_AARCH64)/include
+	@cp $(INC)/local_io.h $(POPCORN_AARCH64)/include
 
 # x86-64
 
@@ -110,6 +111,7 @@ install-x86_64: $(LIB_X86_64)
 	@cp $< $(POPCORN_X86_64)/lib
 	@echo " [INSTALL] $(INC)/remote_io.h to $(POPCORN_X86_64)/include"
 	@cp $(INC)/remote_io.h $(POPCORN_X86_64)/include
+	@cp $(INC)/local_io.h $(POPCORN_X86_64)/include
 
 # install-powerpc64
 install: install-aarch64 install-x86_64

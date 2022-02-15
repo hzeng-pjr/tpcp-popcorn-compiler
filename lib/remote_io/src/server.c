@@ -66,7 +66,10 @@ rio_printf (char *str, ...)
 void __attribute__((constructor))
 pcn_server_init ()
 {
-  pcn_remote_io_active = 1;
+  pcn_remote_io_active = 0;
+  pcn_server_sockfd = -1;
+  return;
+
   local_ip = htonl (0x7f000001); /* 127.0.0.1  */
   pcn_server_port = alloc_server_port ();
   pcn_server_sockfd = pcn_server_connect (0);

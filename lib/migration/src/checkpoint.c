@@ -8,6 +8,7 @@
 #include <signal.h>
 #include <stack_transform.h>
 #include <remote_io.h>
+#include <local_io.h>
 #include "platform.h"
 #include "migrate.h"
 #include "config.h"
@@ -16,7 +17,6 @@
 #include "mapping.h"
 #include "debug.h"
 #include "system.h"
-#include "io.h"
 
 
 /************************************************/
@@ -81,7 +81,7 @@ void* tls_dst=0x0;
 static void* __attribute__((noinline))
 get_call_site() { return __builtin_return_address(0); };
 
-static void dummy(){printf("%s: called\n", __func__);};
+static void dummy(){lio_printf("%s: called\n", __func__);};
 
 void
 __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *callback_data)
@@ -106,7 +106,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		sigset_t old_sig_set;
 		sigset_t new_sig_set;
 
-		printf ("pcn_server_port = %d\n", pcn_server_port);
+		lio_printf ("pcn_server_port = %d\n", pcn_server_port);
 
 		/* Inform the I/O server of the impending migration.  */
 		pcn_migrate ();
@@ -115,24 +115,27 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		_dl_rio_populate_dso_entries ();
 		print_all_dso ();
 		unload_libs ();
-		print ("unload complete\n");
+		lio_print ("unload complete\n");
 
 		GET_LOCAL_REGSET(regs_src);
 
-		do_printf ("GET_LOCAL_REGSET complete\n");
+		lio_printf ("GET_LOCAL_REGSET complete\n");
+		lio_printf ("dest = %u\n", dst_arch);
 
 		err = 0;
 		switch (dst_arch) {
 			case ARCH_AARCH64:
 				err = !REWRITE_STACK(regs_src, regs_dst,
 						     dst_arch);
-				regs_dst.aarch.__magic = 0xAABCBDEADBEAF;
+				regs_dst.aarch.__magic = 0xAABBDEADBEAF;
+				lio_printf ("rewrote stack\n");
 				dump_regs_aarch64(&regs_dst.aarch, LOG_FILE);
 				break;
 			case ARCH_X86_64:
 				err = !REWRITE_STACK(regs_src, regs_dst,
 						     dst_arch);
 				regs_dst.x86.__magic = 0xA8664DEADBEAF;
+				lio_printf ("rewrote stack\n");
 				dump_regs_x86_64(&regs_dst.x86, LOG_FILE);
 				break;
 			case ARCH_POWERPC64:
@@ -141,47 +144,47 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 				dump_regs_powerpc64(&regs_dst.powerpc,
 						    LOG_FILE);
 				break;
-			default: error ("Unsupported architecture!");
+			default: lio_error ("Unsupported architecture!");
 		}
 		if (err) {
-			do_printf("Could not rewrite stack!\n");
+			lio_printf("Could not rewrite stack!\n");
 			return;
 		}
-		do_printf("dest arch is %d\n", dst_arch);
+		lio_printf("dest arch is %d\n", dst_arch);
 		tls_dst = get_thread_pointer(GET_TLS_POINTER, dst_arch);
-		fprintf(stdout, "%s %d\n", __func__, __LINE__);
+		lio_printf("%s %u\n", __func__, __LINE__);
 		set_restore_context(1);
-		fprintf(stdout, "%s %d\n", __func__, __LINE__);
+		lio_printf("%s %u\n", __func__, __LINE__);
 		clear_migrate_flag();
 
 		//signal(SIGALRM, dummy);
 		struct ksigaction kact, koact;
 
 		kact.handler = dummy;
-		do_memset (&kact.mask, 0, sizeof (sigset_t));
+		lio_memset (&kact.mask, 0, sizeof (sigset_t));
 		kact.flags = 0;
 		kact.restorer = NULL;
-		do_rt_sigaction (SIGALRM, &kact, &koact, _NSIG / 8);
+		lio_rt_sigaction (SIGALRM, &kact, &koact, _NSIG / 8);
 
 		//sigemptyset(&new_sig_set);
-		do_memset (&new_sig_set, 0, sizeof (new_sig_set));
+		lio_memset (&new_sig_set, 0, sizeof (new_sig_set));
 
 		//sigaddset(&new_sig_set, SIGALRM);
-		do_sigaddset (&new_sig_set, SIGALRM);
+		lio_sigaddset (&new_sig_set, SIGALRM);
 
 		//sigprocmask(SIG_UNBLOCK, &new_sig_set, &old_sig_set);
-		do_sigprocmask (SIG_UNBLOCK, &new_sig_set, &old_sig_set,
+		lio_sigprocmask (SIG_UNBLOCK, &new_sig_set, &old_sig_set,
 				_NSIG / 8);
 
-		do_printf ("raising SIGALRM\n");
+		lio_printf ("raising SIGALRM\n");
 
 		//raise(SIGALRM); /* wil be catched by ptrace */
-		do_kill (do_getpid (), SIGALRM);
+		lio_kill (lio_getpid (), SIGALRM);
 
 		//sigprocmask(SIG_SETMASK, &old_sig_set, NULL);
-		do_sigprocmask (SIG_UNBLOCK, &old_sig_set, NULL, NSIG / 8);
+		lio_sigprocmask (SIG_UNBLOCK, &old_sig_set, NULL, NSIG / 8);
 
-		do_printf("%s raising done %d\n", __func__, __LINE__);
+		lio_printf("%s raising done %d\n", __func__, __LINE__);
 		//while(1);
 		return;
 	}
@@ -193,26 +196,26 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 	set_restore_context(0);
 
 	/* Populate phdrs.  */
-	fd = do_open (pcn_data->argv[0], O_RDONLY, 0);
+	fd = lio_open (pcn_data->argv[0], O_RDONLY, 0);
 	if (fd < 0)
-		error ("open failed");
+		lio_error ("open failed");
 
-	ret = do_read (fd, &ehdr, sizeof (ehdr));
+	ret = lio_read (fd, &ehdr, sizeof (ehdr));
 	if (ret < 0)
-		error ("failed to read ELF header\n");
+		lio_error ("failed to read ELF header\n");
 
 	phnum = ehdr.e_phnum;
 	phdrs = __builtin_alloca (phnum * sizeof (Elf64_Phdr));
 
-	ret = do_read (fd, phdrs, phnum * sizeof (Elf64_Phdr));
+	ret = lio_read (fd, phdrs, phnum * sizeof (Elf64_Phdr));
 	if (ret < 0)
-		error ("failed to read ELF phdrs\n");
+		lio_error ("failed to read ELF phdrs\n");
 
 	entry = ehdr.e_entry;
 	restore_rw_segments (phdrs, phnum, entry);
 	reset_dynamic (phdrs, phnum, entry, pcn_data->argv[0], &ehdr, fd);
 
-	do_close (fd);
+	lio_close (fd);
 
 	pcn_data->pcn_entry = (unsigned long) &&pcn_cont;
 	ld_start = load_lib (pcn_data->maps[0].name); // Load ld-linux
@@ -222,12 +225,12 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 #elif defined (__aarch64__)
   asm volatile ("br %0;\n\t" : : "r" (ld_start));
 #else
-#error "Unsupported arch"
+#lio_error "Unsupported arch"
 #endif
 
  pcn_cont:
 	pcn_server_sockfd = pcn_server_connect (pcn_server_ip);
-	printf ("pcn_server_port = %d\n", pcn_server_port);
+	lio_printf ("pcn_server_port = %d\n", pcn_server_port);
 }
 
 /* Check if we should migrate, and invoke migration. */

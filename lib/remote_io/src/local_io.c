@@ -12,7 +12,7 @@
 #include <sys/auxv.h>
 #include <signal.h>
 #include "syscall_arch.h"
-#include "io.h"
+#include "local_io.h"
 
 /* Glibc: sysdeps/unix/sysv/linux/sigopts.h  */
 
@@ -25,7 +25,7 @@
 
 
 void
-*do_mmap(void *addr, size_t length, int prot, int flags,
+*lio_mmap(void *addr, size_t length, int prot, int flags,
 	      int fd, off_t offset)
 {
   return (void *) __syscall6 (SYS_mmap, (uintptr_t) addr, length, prot,
@@ -33,43 +33,43 @@ void
 }
 
 int
-do_munmap (void *addr, size_t len)
+lio_munmap (void *addr, size_t len)
 {
   return __syscall2 (SYS_munmap, (uintptr_t) addr, len);
 }
 
 int
-do_mprotect (void *addr, size_t len, int prot)
+lio_mprotect (void *addr, size_t len, int prot)
 {
   return __syscall3 (SYS_mprotect, (uintptr_t) addr, len, prot);
 }
 
 int
-do_write (int fd, const void *buf, unsigned long count)
+lio_write (int fd, const void *buf, unsigned long count)
 {
   return __syscall3 (SYS_write, fd, (uintptr_t) buf, count);
 }
 
 int
-do_writev (int fd, const struct iovec *iov, int iovcnt)
+lio_writev (int fd, const struct iovec *iov, int iovcnt)
 {
   return __syscall3 (SYS_writev, fd, (uintptr_t) iov, iovcnt);
 }
 
 ssize_t
-do_read(int fd, void *buf, size_t count)
+lio_read(int fd, void *buf, size_t count)
 {
   return __syscall3 (SYS_read, fd, (uintptr_t) buf, count);
 }
 
 ssize_t
-do_pread(int fd, void *buf, size_t count, off_t offset)
+lio_pread(int fd, void *buf, size_t count, off_t offset)
 {
   return __syscall4 (SYS_pread64, fd, (uintptr_t) buf, count, offset);
 }
 
 int
-do_open (const char *pathname, int flags, mode_t mode)
+lio_open (const char *pathname, int flags, mode_t mode)
 {
 #ifdef SYS_open
   return __syscall3 (SYS_open, (uintptr_t)pathname, flags, mode);
@@ -79,30 +79,30 @@ do_open (const char *pathname, int flags, mode_t mode)
 }
 
 int
-do_close (int fd)
+lio_close (int fd)
 {
   return __syscall1 (SYS_close, fd);
 }
 
 void
-do_exit (int status)
+lio_exit (int status)
 {
   __syscall1 (SYS_exit, status);
 }
 
 int
-do_getpid ()
+lio_getpid ()
 {
   return __syscall0 (SYS_getpid);
 }
 int
-do_kill (pid_t pid, int sig)
+lio_kill (pid_t pid, int sig)
 {
   return __syscall2 (SYS_kill, pid, sig);
 }
 
 int
-do_rt_sigaction (int sig, struct ksigaction *kact, struct ksigaction *koact,
+lio_rt_sigaction (int sig, struct ksigaction *kact, struct ksigaction *koact,
 		 int nr)
 {
   return __syscall4 (SYS_rt_sigaction,  sig, (uintptr_t) kact,
@@ -110,14 +110,14 @@ do_rt_sigaction (int sig, struct ksigaction *kact, struct ksigaction *koact,
 }
 
 int
-do_sigprocmask (int sig, sigset_t *set, sigset_t *oset, int nr)
+lio_sigprocmask (int sig, sigset_t *set, sigset_t *oset, int nr)
 {
   return __syscall4 (SYS_rt_sigprocmask, sig, (uintptr_t) set,
 		     (uintptr_t) oset, nr);
 }
 
 int
-do_sigaddset (sigset_t *set, int sig)
+lio_sigaddset (sigset_t *set, int sig)
 {
   unsigned long int __mask = __sigmask (sig);
   unsigned long int __word = __sigword (sig);
@@ -128,7 +128,7 @@ do_sigaddset (sigset_t *set, int sig)
 }
 
 int
-do_strlen (char *a)
+lio_strlen (char *a)
 {
   int i;
 
@@ -139,9 +139,9 @@ do_strlen (char *a)
 }
 
 int
-do_strcmp (char *a, char *b)
+lio_strcmp (char *a, char *b)
 {
-  int i, res;
+  int i;
 
   for (i = 0; a[i] != '\0' && b[i] != '\0' && a[i] == b[i]; i++)
     ;
@@ -150,25 +150,25 @@ do_strcmp (char *a, char *b)
 }
 
 void
-print (char *str)
+lio_print (char *str)
 {
   int len;
 
   for (len = 0; str[len] != '\0'; len++)
     ;
 
-  do_write (1, str, len);
+  lio_write (1, str, len);
 }
 
 void
-error (char *str)
+lio_error (char *str)
 {
-  print (str);
-  do_exit (-1);
+  lio_print (str);
+  lio_exit (-1);
 }
 
 void
-do_memset (void *s, int c, size_t n)
+lio_memset (void *s, int c, size_t n)
 {
   int i;
   uint8_t *t = s;
@@ -178,7 +178,7 @@ do_memset (void *s, int c, size_t n)
 }
 
 void
-do_spin ()
+lio_spin ()
 {
   volatile int lock = 1;
   while (lock)
