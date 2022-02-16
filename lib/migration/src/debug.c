@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <local_io.h>
 
 #include "config.h"
 #include "platform.h"
@@ -42,25 +43,25 @@
 void dump_regs_aarch64(const struct regset_aarch64 *regset, const char *log)
 {
   size_t i;
-  FILE *stream;
+  int stream;
 
-  assert(regset && "Invalid regset");
+  LIO_ASSERT (regset, "Invalid regset");
   if(log)
   {
-    stream = fopen(log, "a");
+    stream = lio_open(log, O_RDWR | O_CREAT, 0644);
     if(!stream) return;
   }
-  else stream = stderr;
+  else stream = lio_stderr;
 
-  fprintf(stream, "Register set located @ %p\n", regset);
-  fprintf(stream, "Program counter: %p\n", regset->pc);
-  fprintf(stream, "Stack pointer: %p\n", regset->sp);
+  lio_fprintf(stream, "Register set located @ 0x%x\n", regset);
+  lio_fprintf(stream, "Program counter: 0x%x\n", regset->pc);
+  lio_fprintf(stream, "Stack pointer: 0x%x\n", regset->sp);
 
   for(i = 0; i < 31; i++)
   {
-    if(i == 29) fprintf(stream, "Frame pointer / ");
-    else if(i == 30) fprintf(stream, "Link register / ");
-    fprintf(stream, "X%lu: %ld / %lu / %lx\n", i,
+    if(i == 29) lio_fprintf(stream, "Frame pointer / ");
+    else if(i == 30) lio_fprintf(stream, "Link register / ");
+    lio_fprintf(stream, "X%u: %u / %u / %x\n", i,
             regset->x[i], regset->x[i], regset->x[i]);
   }
 
@@ -68,108 +69,111 @@ void dump_regs_aarch64(const struct regset_aarch64 *regset, const char *log)
   {
     uint64_t upper = UPPER_HALF_128(regset->v[i]),
              lower = LOWER_HALF_128(regset->v[i]);
-    fprintf(stream, "V%lu: ", i);
-    if(upper) fprintf(stream, "%lx", upper);
-    fprintf(stream, "%lx\n", lower);
+    lio_fprintf(stream, "V%u: ", i);
+    if(upper) lio_fprintf(stream, "%x", upper);
+    lio_fprintf(stream, "%x\n", lower);
   }
 
-  fclose(stream);
+  if (stream != lio_stderr)
+    lio_close(stream);
 }
 
 void dump_regs_powerpc64(const struct regset_powerpc64 *regset,
                          const char *log)
 {
   size_t i;
-  FILE *stream;
+  int stream;
 
-  assert(regset && "Invalid regset");
+  LIO_ASSERT (regset, "Invalid regset");
   if(log)
   {
-    stream = fopen(log, "a");
+    stream = lio_open(log, O_RDWR | O_CREAT, 0644);
     if(!stream) return;
   }
-  else stream = stderr;
+  else stream = lio_stderr;
 
-  fprintf(stream, "Register set located @ %p\n", regset);
-  fprintf(stream, "Program counter: %p\n", regset->pc);
-  fprintf(stream, "Link register: %p\n", regset->lr);
-  fprintf(stream, "Counter: %ld / %lu / %lx / %p\n",
-          UINT64(regset->ctr), UINT64(regset->ctr), UINT64(regset->ctr),
-          regset->ctr);
+  lio_fprintf(stream, "Register set located @ 0x%x\n", regset);
+  lio_fprintf(stream, "Program counter: 0x%x\n", regset->pc);
+  lio_fprintf(stream, "Link register: 0x%x\n", regset->lr);
+  lio_fprintf(stream, "Counter: %u / %u / %x / 0x%x\n",
+	      UINT64(regset->ctr), UINT64(regset->ctr), UINT64(regset->ctr),
+	      regset->ctr);
 
   for(i = 0; i < 32; i++)
   {
-    if(i == 1) fprintf(stream, "Stack pointer / ");
-    else if(i == 2) fprintf(stream, "Table-of-contents pointer / ");
-    else if(i == 13) fprintf(stream, "Frame-base pointer / ");
-    fprintf(stream, "R%lu: %ld / %lu / %lx\n", i,
+    if(i == 1) lio_fprintf(stream, "Stack pointer / ");
+    else if(i == 2) lio_fprintf(stream, "Table-of-contents pointer / ");
+    else if(i == 13) lio_fprintf(stream, "Frame-base pointer / ");
+    lio_fprintf(stream, "R%u: %u / %u / %x\n", i,
             regset->r[i], regset->r[i], regset->r[i]);
   }
 
   for(i = 0; i < 32; i++)
-    fprintf(stream, "F%lu: %lx\n", i, regset->f[i]);
+    lio_fprintf(stream, "F%u: %x\n", i, regset->f[i]);
 
-  fclose(stream);
+  if (stream != lio_stderr)
+    lio_close(stream);
 }
 
 void dump_regs_x86_64(const struct regset_x86_64 *regset, const char *log)
 {
   size_t i;
-  FILE *stream;
+  int stream;
 
-  assert(regset && "Invalid regset");
+  LIO_ASSERT (regset, "Invalid regset");
   if(log)
   {
-    stream = fopen(log, "a");
+    stream = lio_open(log, O_RDWR | O_CREAT, 0644);
     if(!stream) return;
   }
-  else stream = stderr;
+  else stream = lio_stderr;
 
-  fprintf(stream, "Register set located @ %p\n", regset);
-  fprintf(stream, "Instruction pointer: %p\n", regset->rip);
-  fprintf(stream, "RAX: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "Register set located @ 0x%x\n", regset);
+  lio_fprintf(stream, "Instruction pointer: 0x%x\n", regset->rip);
+  lio_fprintf(stream, "RAX: %u / %u / %x\n",
           regset->rax, regset->rax, regset->rax);
-  fprintf(stream, "RDX: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "RDX: %u / %u / %x\n",
           regset->rdx, regset->rdx, regset->rdx);
-  fprintf(stream, "RCX: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "RCX: %u / %u / %x\n",
           regset->rcx, regset->rcx, regset->rcx);
-  fprintf(stream, "RBX: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "RBX: %u / %u / %x\n",
           regset->rbx, regset->rbx, regset->rbx);
-  fprintf(stream, "RSI: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "RSI: %u / %u / %x\n",
           regset->rsi, regset->rsi, regset->rsi);
-  fprintf(stream, "RDI: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "RDI: %u / %u / %x\n",
           regset->rdi, regset->rdi, regset->rdi);
-  fprintf(stream, "Frame pointer / RBP: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "Frame pointer / RBP: %u / %u / %x\n",
           regset->rbp, regset->rbp, regset->rbp);
-  fprintf(stream, "Stack pointer / RSP: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "Stack pointer / RSP: %u / %u / %x\n",
           regset->rsp, regset->rsp, regset->rsp);
-  fprintf(stream, "R8: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "R8: %u / %u / %x\n",
           regset->r8, regset->r8, regset->r8);
-  fprintf(stream, "R9: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "R9: %u / %u / %x\n",
           regset->r9, regset->r9, regset->r9);
-  fprintf(stream, "R10: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "R10: %u / %u / %x\n",
           regset->r10, regset->r10, regset->r10);
-  fprintf(stream, "R11: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "R11: %u / %u / %x\n",
           regset->r11, regset->r11, regset->r11);
-  fprintf(stream, "R12: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "R12: %u / %u / %x\n",
           regset->r12, regset->r12, regset->r12);
-  fprintf(stream, "R13: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "R13: %u / %u / %x\n",
           regset->r13, regset->r13, regset->r13);
-  fprintf(stream, "R14: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "R14: %u / %u / %x\n",
           regset->r14, regset->rax, regset->rax);
-  fprintf(stream, "R15: %ld / %lu / %lx\n",
+  lio_fprintf(stream, "R15: %u / %u / %x\n",
           regset->r15, regset->r15, regset->r15);
 
   for(i = 0; i < 16; i++)
   {
     uint64_t upper = UPPER_HALF_128(regset->xmm[i]),
              lower = LOWER_HALF_128(regset->xmm[i]);
-    fprintf(stream, "XMM%lu: ", i);
-    if(upper) fprintf(stream, "%lx", upper);
-    fprintf(stream, "%lx\n", lower);
+    lio_fprintf(stream, "XMM%u: ", i);
+    if(upper) lio_fprintf(stream, "%x", upper);
+    lio_fprintf(stream, "%x\n", lower);
   }
 
-  fclose(stream);
+  if (stream != lio_stderr)
+    lio_close(stream);
 }
 
 void dump_regs(const void *regset, const char *log)
@@ -201,7 +205,7 @@ static void segfault_handler(int sig, siginfo_t *info, void *ctx)
 #define LOG_WRITE( format, ... ) \
   do { \
     char buf[BUFSIZE]; \
-    int sz = snprintf(buf, BUFSIZE, format, __VA_ARGS__) + 1; \
+    int sz = lio_snprintf(buf, BUFSIZE, format, __VA_ARGS__) + 1; \
     write(debug_info[nid].fd, buf, sz); \
   } while(0);
 
@@ -210,7 +214,7 @@ static void segfault_handler(int sig, siginfo_t *info, void *ctx)
   int nid = 0;
   if(!pthread_mutex_trylock(&debug_info[nid].lock) && debug_info[nid].fd)
   {
-    LOG_WRITE("%d: segfault @ %p\n", info->si_pid, info->si_addr);
+    LOG_WRITE("%u: segfault @ 0x%x\n", info->si_pid, info->si_addr);
     pthread_mutex_unlock(&debug_info[nid].lock);
   }
 #undef LOG_WRITE
@@ -236,7 +240,7 @@ void remote_debug_init(int nid)
   {
 #if _LOG == 1
     char fn[32];
-    snprintf(fn, 32, "/tmp/node-%d.log", nid);
+    lio_snprintf(fn, 32, "/tmp/node-%d.log", nid);
     debug_info[nid].fd = open(fn, O_CREAT | O_APPEND);
 #endif
     act.sa_sigaction = segfault_handler;

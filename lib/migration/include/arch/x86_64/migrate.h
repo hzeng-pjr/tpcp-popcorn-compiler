@@ -44,7 +44,7 @@
       if(dst_arch != ARCH_X86_64) \
         ret = !st_userspace_rewrite((void *)regs_src.x86.rsp, ARCH_X86_64, \
                                     &regs_src, dst_arch, &regs_dst); \
-      else memcpy(&regs_dst, &regs_src, sizeof(struct regset_x86_64)); \
+      else lio_memcpy(&regs_dst, &regs_src, sizeof(struct regset_x86_64)); \
       ret; \
     })
 

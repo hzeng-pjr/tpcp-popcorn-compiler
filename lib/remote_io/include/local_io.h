@@ -13,6 +13,8 @@
 #define pcn_break() spin()
 #endif
 
+#define LIO_ASSERT(cond, msg) lio_assert ((int)(cond), msg, __FILE__, __LINE__)
+
 struct ksigaction {
 	void (*handler)(int);
 	unsigned long flags;
@@ -48,12 +50,14 @@ extern int lio_sigaddset (sigset_t *set, int sig);
 extern int lio_strlen ();
 extern int lio_strcmp (char *a, char *b);
 extern void lio_memset (void *s, int c, size_t n);
+extern void lio_memcpy (void *d, void *s, size_t n);
 extern void lio_spin ();
 
-extern void lio_printf (const char *fmt, ...);
-extern void lio_fprintf (int fd, const char *fmt, ...);
-extern void lio_snprintf (char *str, size_t size, const char *fmt, ...);
+extern int lio_printf (const char *fmt, ...);
+extern int lio_fprintf (int fd, const char *fmt, ...);
+extern int lio_snprintf (char *str, size_t size, const char *fmt, ...);
 extern void lio_print (char *str);
 extern void lio_error (char *str);
+extern void lio_assert (int cond, char *msg, char *file, int lineno);
 
 #endif

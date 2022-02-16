@@ -168,6 +168,16 @@ lio_error (char *str)
 }
 
 void
+lio_assert (int cond, char *msg, char *file, int lineno)
+{
+  if (cond)
+    return;
+
+  lio_printf ("%s:%u -- %s\n", file, lineno, msg);
+  lio_exit (EXIT_FAILURE);
+}
+
+void
 lio_memset (void *s, int c, size_t n)
 {
   int i;
@@ -175,6 +185,17 @@ lio_memset (void *s, int c, size_t n)
 
   for (i = 0; i < n; i++)
     t[i] = c;
+}
+
+void
+lio_memcpy (void *d, void *s, size_t n)
+{
+  int i;
+  uint8_t *dd = d;
+  uint8_t *ss = s;
+
+  for (i = 0; i < n; i++)
+    dd[i] = ss[i];
 }
 
 void

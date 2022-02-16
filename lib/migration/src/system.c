@@ -107,9 +107,9 @@ unload_libs ()
 	ret = lio_munmap ((void *)me[i].start, me[i].size);
 
       if (ret)
-	lio_printf ("munmap %u of %u failed\n", i, pcn_data->num_maps);
+	lio_printf ("munmap %u of %u failed\n", i+1, pcn_data->num_maps);
       else
-	lio_printf ("munmap %u of %u success\n", i, pcn_data->num_maps);
+	lio_printf ("munmap %u of %u success\n", i+1, pcn_data->num_maps);
     }
 }
 

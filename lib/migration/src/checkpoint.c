@@ -150,7 +150,11 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 			lio_printf("Could not rewrite stack!\n");
 			return;
 		}
-		lio_printf("dest arch is %d\n", dst_arch);
+		lio_printf("dest arch is %u\n", dst_arch);
+
+		unsigned long tls_ptr = (uintptr_t) GET_TLS_POINTER;
+		lio_printf ("TLS @ 0x%x\n", tls_ptr);
+
 		tls_dst = get_thread_pointer(GET_TLS_POINTER, dst_arch);
 		lio_printf("%s %u\n", __func__, __LINE__);
 		set_restore_context(1);
@@ -184,7 +188,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		//sigprocmask(SIG_SETMASK, &old_sig_set, NULL);
 		lio_sigprocmask (SIG_UNBLOCK, &old_sig_set, NULL, NSIG / 8);
 
-		lio_printf("%s raising done %d\n", __func__, __LINE__);
+		lio_printf("%s raising done %u\n", __func__, __LINE__);
 		//while(1);
 		return;
 	}
