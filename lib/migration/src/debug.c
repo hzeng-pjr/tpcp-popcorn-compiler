@@ -53,15 +53,15 @@ void dump_regs_aarch64(const struct regset_aarch64 *regset, const char *log)
   }
   else stream = lio_stderr;
 
-  lio_fprintf(stream, "Register set located @ 0x%x\n", regset);
-  lio_fprintf(stream, "Program counter: 0x%x\n", regset->pc);
-  lio_fprintf(stream, "Stack pointer: 0x%x\n", regset->sp);
+  lio_fprintf(stream, "Register set located @ 0x%lx\n", regset);
+  lio_fprintf(stream, "Program counter: 0x%lx\n", regset->pc);
+  lio_fprintf(stream, "Stack pointer: 0x%lx\n", regset->sp);
 
   for(i = 0; i < 31; i++)
   {
     if(i == 29) lio_fprintf(stream, "Frame pointer / ");
     else if(i == 30) lio_fprintf(stream, "Link register / ");
-    lio_fprintf(stream, "X%u: %u / %u / %x\n", i,
+    lio_fprintf(stream, "X%u: %lu / %lu / %lx\n", i,
             regset->x[i], regset->x[i], regset->x[i]);
   }
 
@@ -69,9 +69,9 @@ void dump_regs_aarch64(const struct regset_aarch64 *regset, const char *log)
   {
     uint64_t upper = UPPER_HALF_128(regset->v[i]),
              lower = LOWER_HALF_128(regset->v[i]);
-    lio_fprintf(stream, "V%u: ", i);
-    if(upper) lio_fprintf(stream, "%x", upper);
-    lio_fprintf(stream, "%x\n", lower);
+    lio_fprintf(stream, "V%lu: ", i);
+    if(upper) lio_fprintf(stream, "%lx", upper);
+    lio_fprintf(stream, "%lx\n", lower);
   }
 
   if (stream != lio_stderr)
@@ -92,10 +92,10 @@ void dump_regs_powerpc64(const struct regset_powerpc64 *regset,
   }
   else stream = lio_stderr;
 
-  lio_fprintf(stream, "Register set located @ 0x%x\n", regset);
-  lio_fprintf(stream, "Program counter: 0x%x\n", regset->pc);
-  lio_fprintf(stream, "Link register: 0x%x\n", regset->lr);
-  lio_fprintf(stream, "Counter: %u / %u / %x / 0x%x\n",
+  lio_fprintf(stream, "Register set located @ 0x%lx\n", regset);
+  lio_fprintf(stream, "Program counter: 0x%lx\n", regset->pc);
+  lio_fprintf(stream, "Link register: 0x%lx\n", regset->lr);
+  lio_fprintf(stream, "Counter: %lu / %lu / %lx / 0x%lx\n",
 	      UINT64(regset->ctr), UINT64(regset->ctr), UINT64(regset->ctr),
 	      regset->ctr);
 
@@ -104,12 +104,12 @@ void dump_regs_powerpc64(const struct regset_powerpc64 *regset,
     if(i == 1) lio_fprintf(stream, "Stack pointer / ");
     else if(i == 2) lio_fprintf(stream, "Table-of-contents pointer / ");
     else if(i == 13) lio_fprintf(stream, "Frame-base pointer / ");
-    lio_fprintf(stream, "R%u: %u / %u / %x\n", i,
+    lio_fprintf(stream, "R%u: %lu / %lu / %lx\n", i,
             regset->r[i], regset->r[i], regset->r[i]);
   }
 
   for(i = 0; i < 32; i++)
-    lio_fprintf(stream, "F%u: %x\n", i, regset->f[i]);
+    lio_fprintf(stream, "F%lu: %lx\n", i, regset->f[i]);
 
   if (stream != lio_stderr)
     lio_close(stream);
@@ -128,48 +128,48 @@ void dump_regs_x86_64(const struct regset_x86_64 *regset, const char *log)
   }
   else stream = lio_stderr;
 
-  lio_fprintf(stream, "Register set located @ 0x%x\n", regset);
-  lio_fprintf(stream, "Instruction pointer: 0x%x\n", regset->rip);
-  lio_fprintf(stream, "RAX: %u / %u / %x\n",
+  lio_fprintf(stream, "Register set located @ 0x%lx\n", regset);
+  lio_fprintf(stream, "Instruction pointer: 0x%lx\n", regset->rip);
+  lio_fprintf(stream, "RAX: %lu / %lu / %lx\n",
           regset->rax, regset->rax, regset->rax);
-  lio_fprintf(stream, "RDX: %u / %u / %x\n",
+  lio_fprintf(stream, "RDX: %lu / %lu / %lx\n",
           regset->rdx, regset->rdx, regset->rdx);
-  lio_fprintf(stream, "RCX: %u / %u / %x\n",
+  lio_fprintf(stream, "RCX: %lu / %lu / %lx\n",
           regset->rcx, regset->rcx, regset->rcx);
-  lio_fprintf(stream, "RBX: %u / %u / %x\n",
+  lio_fprintf(stream, "RBX: %lu / %lu / %lx\n",
           regset->rbx, regset->rbx, regset->rbx);
-  lio_fprintf(stream, "RSI: %u / %u / %x\n",
+  lio_fprintf(stream, "RSI: %lu / %lu / %lx\n",
           regset->rsi, regset->rsi, regset->rsi);
-  lio_fprintf(stream, "RDI: %u / %u / %x\n",
+  lio_fprintf(stream, "RDI: %lu / %lu / %lx\n",
           regset->rdi, regset->rdi, regset->rdi);
-  lio_fprintf(stream, "Frame pointer / RBP: %u / %u / %x\n",
+  lio_fprintf(stream, "Frame pointer / RBP: %lu / %lu / %lx\n",
           regset->rbp, regset->rbp, regset->rbp);
-  lio_fprintf(stream, "Stack pointer / RSP: %u / %u / %x\n",
+  lio_fprintf(stream, "Stack pointer / RSP: %lu / %lu / %lx\n",
           regset->rsp, regset->rsp, regset->rsp);
-  lio_fprintf(stream, "R8: %u / %u / %x\n",
+  lio_fprintf(stream, "R8: %lu / %lu / %lx\n",
           regset->r8, regset->r8, regset->r8);
-  lio_fprintf(stream, "R9: %u / %u / %x\n",
+  lio_fprintf(stream, "R9: %lu / %lu / %lx\n",
           regset->r9, regset->r9, regset->r9);
-  lio_fprintf(stream, "R10: %u / %u / %x\n",
+  lio_fprintf(stream, "R10: %lu / %lu / %lx\n",
           regset->r10, regset->r10, regset->r10);
-  lio_fprintf(stream, "R11: %u / %u / %x\n",
+  lio_fprintf(stream, "R11: %lu / %lu / %lx\n",
           regset->r11, regset->r11, regset->r11);
-  lio_fprintf(stream, "R12: %u / %u / %x\n",
+  lio_fprintf(stream, "R12: %lu / %lu / %lx\n",
           regset->r12, regset->r12, regset->r12);
-  lio_fprintf(stream, "R13: %u / %u / %x\n",
+  lio_fprintf(stream, "R13: %lu / %lu / %lx\n",
           regset->r13, regset->r13, regset->r13);
-  lio_fprintf(stream, "R14: %u / %u / %x\n",
+  lio_fprintf(stream, "R14: %lu / %lu / %lx\n",
           regset->r14, regset->rax, regset->rax);
-  lio_fprintf(stream, "R15: %u / %u / %x\n",
+  lio_fprintf(stream, "R15: %lu / %lu / %lx\n",
           regset->r15, regset->r15, regset->r15);
 
   for(i = 0; i < 16; i++)
   {
     uint64_t upper = UPPER_HALF_128(regset->xmm[i]),
              lower = LOWER_HALF_128(regset->xmm[i]);
-    lio_fprintf(stream, "XMM%u: ", i);
-    if(upper) lio_fprintf(stream, "%x", upper);
-    lio_fprintf(stream, "%x\n", lower);
+    lio_fprintf(stream, "XMM%lu: ", i);
+    if(upper) lio_fprintf(stream, "%lx", upper);
+    lio_fprintf(stream, "%lx\n", lower);
   }
 
   if (stream != lio_stderr)
@@ -214,7 +214,7 @@ static void segfault_handler(int sig, siginfo_t *info, void *ctx)
   int nid = 0;
   if(!pthread_mutex_trylock(&debug_info[nid].lock) && debug_info[nid].fd)
   {
-    LOG_WRITE("%u: segfault @ 0x%x\n", info->si_pid, info->si_addr);
+    LOG_WRITE("%u: segfault @ 0x%lx\n", info->si_pid, info->si_addr);
     pthread_mutex_unlock(&debug_info[nid].lock);
   }
 #undef LOG_WRITE

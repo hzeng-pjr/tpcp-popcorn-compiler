@@ -41,16 +41,16 @@ get_call_site() { return __builtin_return_address(0); }
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        lio_printf("[ST] Setup time: %u\n",				\
+        lio_printf("[ST] Setup time: %lu\n",				\
 		   (init.tv_sec * 1000000000 + init.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
-        lio_printf("[ST] Transform time: %u\n",				\
+        lio_printf("[ST] Transform time: %lu\n",			\
 		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) -	\
 		   (init.tv_sec * 1000000000 + init.tv_nsec));		\
-        lio_printf("[ST] Cleanup time: %u\n",				\
+        lio_printf("[ST] Cleanup time: %lu\n",				\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec));	\
-        lio_printf("[ST] Total elapsed time: %u\n",			\
+        lio_printf("[ST] Total elapsed time: %lu\n",			\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
       } \
@@ -91,16 +91,16 @@ get_call_site() { return __builtin_return_address(0); }
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        lio_printf("[ST] Setup time: %u\n",				\
+        lio_printf("[ST] Setup time: %lu\n",				\
 		   (init.tv_sec * 1000000000 + init.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
-        lio_printf("[ST] Transform time: %u\n",			\
+        lio_printf("[ST] Transform time: %lu\n",			\
 		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) -	\
 		   (init.tv_sec * 1000000000 + init.tv_nsec));		\
-        lio_printf("[ST] Cleanup time: %u\n",				\
+        lio_printf("[ST] Cleanup time: %lu\n",				\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec));	\
-        lio_printf("[ST] Total elapsed time: %u\n",			\
+        lio_printf("[ST] Total elapsed time: %lu\n",			\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
         post_transform = 1; \
@@ -134,7 +134,7 @@ get_call_site() { return __builtin_return_address(0); }
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        lio_printf("[ST] Transform time: %u\n",				\
+        lio_printf("[ST] Transform time: %lu\n",			\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
         post_transform = 1; \
@@ -179,16 +179,16 @@ get_call_site() { return __builtin_return_address(0); }
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        lio_printf("[ST] Setup time: %u\n",				\
+        lio_printf("[ST] Setup time: %lu\n",				\
 		   (init.tv_sec * 1000000000 + init.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
-        lio_printf("[ST] Transform time: %u\n",				\
+        lio_printf("[ST] Transform time: %lu\n",			\
 		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) -	\
 		   (init.tv_sec * 1000000000 + init.tv_nsec));		\
-        lio_printf("[ST] Cleanup time: %u\n",				\
+        lio_printf("[ST] Cleanup time: %lu\n",				\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec));	\
-        lio_printf("[ST] Total elapsed time: %u\n",			\
+        lio_printf("[ST] Total elapsed time: %lu\n",			\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
       } \
@@ -230,16 +230,16 @@ get_call_site() { return __builtin_return_address(0); }
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        lio_printf("[ST] Setup time: %u\n",				\
+        lio_printf("[ST] Setup time: %lu\n",				\
 		   (init.tv_sec * 1000000000 + init.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
-        lio_printf("[ST] Transform time: %u\n",				\
+        lio_printf("[ST] Transform time: %lu\n",			\
 		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) -	\
 		   (init.tv_sec * 1000000000 + init.tv_nsec));		\
-        lio_printf("[ST] Cleanup time: %u\n",				\
+        lio_printf("[ST] Cleanup time: %lu\n",				\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec));	\
-        lio_printf("[ST] Total elapsed time: %u\n",			\
+        lio_printf("[ST] Total elapsed time: %lu\n",			\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
         post_transform = 1; \
@@ -274,7 +274,7 @@ get_call_site() { return __builtin_return_address(0); }
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        lio_printf("[ST] Transform time: %u\n",				\
+        lio_printf("[ST] Transform time: %lu\n",			\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
         post_transform = 1; \
@@ -317,16 +317,16 @@ get_call_site() { return __builtin_return_address(0); }
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        lio_printf("[ST] Setup time: %u\n",				\
+        lio_printf("[ST] Setup time: %lu\n",				\
 		   (init.tv_sec * 1000000000 + init.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
-        lio_printf("[ST] Transform time: %u\n",				\
+        lio_printf("[ST] Transform time: %lu\n",			\
 		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) -	\
 		   (init.tv_sec * 1000000000 + init.tv_nsec));		\
-        lio_printf("[ST] Cleanup time: %u\n",				\
+        lio_printf("[ST] Cleanup time: %lu\n",				\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec));	\
-        lio_printf("[ST] Total elapsed time: %u\n",			\
+        lio_printf("[ST] Total elapsed time: %lu\n",			\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
       } \
@@ -368,16 +368,16 @@ get_call_site() { return __builtin_return_address(0); }
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        lio_printf("[ST] Setup time: %u\n",				\
+        lio_printf("[ST] Setup time: %lu\n",				\
 		   (init.tv_sec * 1000000000 + init.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
-        lio_printf("[ST] Transform time: %u\n",				\
+        lio_printf("[ST] Transform time: %lu\n",			\
 		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) -	\
 		   (init.tv_sec * 1000000000 + init.tv_nsec));		\
-        lio_printf("[ST] Cleanup time: %u\n",				\
+        lio_printf("[ST] Cleanup time: %lu\n",				\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec));	\
-        lio_printf("[ST] Total elapsed time: %u\n",			\
+        lio_printf("[ST] Total elapsed time: %lu\n",			\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
         post_transform = 1; \
@@ -411,7 +411,7 @@ get_call_site() { return __builtin_return_address(0); }
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        lio_printf("[ST] Transform time: %u\n",				\
+        lio_printf("[ST] Transform time: %lu\n",			\
 		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
 		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
         post_transform = 1; \

@@ -312,7 +312,7 @@ static bool prep_stack(void)
 #endif
   }
 
-  ST_INFO("Prepped stack for main thread, addresses 0x%x -> 0x%x\n",
+  ST_INFO("Prepped stack for main thread, addresses 0x%lx -> 0x%lx\n",
           bounds.low, bounds.high);
 
   /*
@@ -367,7 +367,7 @@ static bool get_main_stack(stack_bounds* bounds)
   free(lineptr);
   fclose(proc_fp);
 
-  ST_INFO("procfs stack limits: 0x%x -> 0x%x\n", bounds->low, bounds->high);
+  ST_INFO("procfs stack limits: 0x%lx -> 0x%lx\n", bounds->low, bounds->high);
   return found;
 }
 
@@ -405,7 +405,7 @@ static bool get_thread_stack(stack_bounds* bounds)
     ST_WARN("could not get stack limits\n");
     retval = false;
   }
-  ST_INFO("Thread stack limits: 0x%x -> 0x%x\n", bounds->low, bounds->high);
+  ST_INFO("Thread stack limits: 0x%lx -> 0x%lx\n", bounds->low, bounds->high);
   return retval;
 }
 
@@ -465,7 +465,7 @@ static int userspace_rewrite_internal(void* sp,
   /* Find which half the current stack uses and rewrite to other. */
   cur_stack = (sp >= stack_b) ? stack_a : stack_b;
   new_stack = (sp >= stack_b) ? stack_b : stack_a;
-  ST_INFO("On stack 0x%x, rewriting to 0x%x\n", cur_stack, new_stack);
+  ST_INFO("On stack 0x%lx, rewriting to 0x%lx\n", cur_stack, new_stack);
   if(st_rewrite_stack(src_handle, src_regs, cur_stack,
                       dest_handle, dest_regs, new_stack))
   {
