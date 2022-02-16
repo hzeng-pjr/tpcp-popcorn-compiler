@@ -78,5 +78,6 @@ static uint16_t callee_reg_size_x86_64(uint16_t reg)
   }
 
   ST_ERR(1, "unknown/invalid register %u (x86-64)\n", reg);
+  return 0;
 }
 

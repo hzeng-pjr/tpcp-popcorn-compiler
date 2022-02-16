@@ -37,27 +37,27 @@ get_call_site() { return __builtin_return_address(0); }
       st_destroy(src); \
       st_destroy(dest); \
       if(ret) \
-        fprintf(stderr, "Couldn't re-write the stack\n"); \
+        lio_fprintf(lio_stderr, "Couldn't re-write the stack\n"); \
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        printf("[ST] Setup time: %lu\n", \
-              (init.tv_sec * 1000000000 + init.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
-        printf("[ST] Transform time: %lu\n", \
-              (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) - \
-              (init.tv_sec * 1000000000 + init.tv_nsec)); \
-        printf("[ST] Cleanup time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec)); \
-        printf("[ST] Total elapsed time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
+        lio_printf("[ST] Setup time: %u\n",				\
+		   (init.tv_sec * 1000000000 + init.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
+        lio_printf("[ST] Transform time: %u\n",				\
+		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) -	\
+		   (init.tv_sec * 1000000000 + init.tv_nsec));		\
+        lio_printf("[ST] Cleanup time: %u\n",				\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec));	\
+        lio_printf("[ST] Total elapsed time: %u\n",			\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
       } \
     } \
     else \
     { \
-      fprintf(stderr, "Couldn't open ELF information\n"); \
+      lio_fprintf(lio_stderr, "Couldn't open ELF information\n"); \
       if(src) st_destroy(src); \
       if(dest) st_destroy(dest); \
     } \
@@ -87,29 +87,29 @@ get_call_site() { return __builtin_return_address(0); }
       clock_gettime(CLOCK_MONOTONIC, &rewrite); \
       st_destroy(src); \
       if(ret) \
-        fprintf(stderr, "Couldn't re-write the stack\n"); \
+        lio_fprintf(lio_stderr, "Couldn't re-write the stack\n"); \
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        printf("[ST] Setup time: %lu\n", \
-              (init.tv_sec * 1000000000 + init.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
-        printf("[ST] Transform time: %lu\n", \
-              (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) - \
-              (init.tv_sec * 1000000000 + init.tv_nsec)); \
-        printf("[ST] Cleanup time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec)); \
-        printf("[ST] Total elapsed time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
+        lio_printf("[ST] Setup time: %u\n",				\
+		   (init.tv_sec * 1000000000 + init.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
+        lio_printf("[ST] Transform time: %u\n",			\
+		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) -	\
+		   (init.tv_sec * 1000000000 + init.tv_nsec));		\
+        lio_printf("[ST] Cleanup time: %u\n",				\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec));	\
+        lio_printf("[ST] Total elapsed time: %u\n",			\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
         post_transform = 1; \
         SET_REGS_AARCH64(regset_dest); \
         SET_FRAME_AARCH64(regset_dest.x[29], regset_dest.sp); \
         SET_PC_IMM(func); \
       } \
     } \
-    else fprintf(stderr, "Couldn't open ELF information\n"); \
+    else lio_fprintf(lio_stderr, "Couldn't open ELF information\n"); \
   })
 
 /*
@@ -130,20 +130,20 @@ get_call_site() { return __builtin_return_address(0); }
       clock_gettime(CLOCK_MONOTONIC, &start); \
       ret = st_rewrite_stack(aarch64_handle, &regset, bounds.high, \
                              aarch64_handle, &regset_dest, bounds.low); \
-      if(ret) fprintf(stderr, "Couldn't re-write the stack\n"); \
+      if(ret) lio_fprintf(lio_stderr, "Couldn't re-write the stack\n"); \
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        printf("[ST] Transform time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
+        lio_printf("[ST] Transform time: %u\n",				\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
         post_transform = 1; \
         SET_REGS_AARCH64(regset_dest); \
         SET_FRAME_AARCH64(regset_dest.x[29], regset_dest.sp); \
         SET_PC_IMM(func); \
       } \
     } \
-    else fprintf(stderr, "Invalid stack transformation handle\n"); \
+    else lio_fprintf(lio_stderr, "Invalid stack transformation handle\n"); \
   })
 
 #elif defined(__powerpc64__)
@@ -175,27 +175,27 @@ get_call_site() { return __builtin_return_address(0); }
       st_destroy(src); \
       st_destroy(dest); \
       if(ret) \
-        fprintf(stderr, "Couldn't re-write the stack\n"); \
+        lio_fprintf(lio_stderr, "Couldn't re-write the stack\n"); \
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        printf("[ST] Setup time: %lu\n", \
-              (init.tv_sec * 1000000000 + init.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
-        printf("[ST] Transform time: %lu\n", \
-              (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) - \
-              (init.tv_sec * 1000000000 + init.tv_nsec)); \
-        printf("[ST] Cleanup time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec)); \
-        printf("[ST] Total elapsed time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
+        lio_printf("[ST] Setup time: %u\n",				\
+		   (init.tv_sec * 1000000000 + init.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
+        lio_printf("[ST] Transform time: %u\n",				\
+		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) -	\
+		   (init.tv_sec * 1000000000 + init.tv_nsec));		\
+        lio_printf("[ST] Cleanup time: %u\n",				\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec));	\
+        lio_printf("[ST] Total elapsed time: %u\n",			\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
       } \
     } \
     else \
     { \
-      fprintf(stderr, "Couldn't open ELF information\n"); \
+      lio_fprintf(lio_stderr, "Couldn't open ELF information\n"); \
       if(src) st_destroy(src); \
       if(dest) st_destroy(dest); \
     } \
@@ -226,22 +226,22 @@ get_call_site() { return __builtin_return_address(0); }
       clock_gettime(CLOCK_MONOTONIC, &rewrite); \
       st_destroy(src); \
       if(ret) \
-        fprintf(stderr, "Couldn't re-write the stack\n"); \
+        lio_fprintf(lio_stderr, "Couldn't re-write the stack\n"); \
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        printf("[ST] Setup time: %lu\n", \
-              (init.tv_sec * 1000000000 + init.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
-        printf("[ST] Transform time: %lu\n", \
-              (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) - \
-              (init.tv_sec * 1000000000 + init.tv_nsec)); \
-        printf("[ST] Cleanup time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec)); \
-        printf("[ST] Total elapsed time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
+        lio_printf("[ST] Setup time: %u\n",				\
+		   (init.tv_sec * 1000000000 + init.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
+        lio_printf("[ST] Transform time: %u\n",				\
+		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) -	\
+		   (init.tv_sec * 1000000000 + init.tv_nsec));		\
+        lio_printf("[ST] Cleanup time: %u\n",				\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec));	\
+        lio_printf("[ST] Total elapsed time: %u\n",			\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
         post_transform = 1; \
         SET_REGS_POWERPC64(regset_dest); \
         SET_FRAME_POWERPC64(regset_dest.r[31], regset_dest.r[1]); \
@@ -249,7 +249,7 @@ get_call_site() { return __builtin_return_address(0); }
       } \
     } \
     else \
-      fprintf(stderr, "Couldn't open ELF information\n"); \
+      lio_fprintf(lio_stderr, "Couldn't open ELF information\n"); \
   })
 
 /*
@@ -270,13 +270,13 @@ get_call_site() { return __builtin_return_address(0); }
       clock_gettime(CLOCK_MONOTONIC, &start); \
       ret = st_rewrite_stack(powerpc64_handle, &regset, bounds.high, \
                              powerpc64_handle, &regset_dest, bounds.low); \
-      if(ret) fprintf(stderr, "Couldn't re-write the stack\n"); \
+      if(ret) lio_fprintf(lio_stderr, "Couldn't re-write the stack\n"); \
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        printf("[ST] Transform time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
+        lio_printf("[ST] Transform time: %u\n",				\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
         post_transform = 1; \
         SET_REGS_POWERPC64(regset_dest); \
         SET_FRAME_POWERPC64(regset_dest.r[31], regset_dest.r[1]); \
@@ -284,7 +284,7 @@ get_call_site() { return __builtin_return_address(0); }
       } \
     } \
     else \
-      fprintf(stderr, "Invalid stack transformation handle\n"); \
+      lio_fprintf(lio_stderr, "Invalid stack transformation handle\n"); \
   })
 
 #elif defined __x86_64__
@@ -313,27 +313,27 @@ get_call_site() { return __builtin_return_address(0); }
       st_destroy(src); \
       st_destroy(dest); \
       if(ret) \
-        fprintf(stderr, "Couldn't re-write the stack\n"); \
+        lio_fprintf(lio_stderr, "Couldn't re-write the stack\n"); \
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        printf("[ST] Setup time: %lu\n", \
-              (init.tv_sec * 1000000000 + init.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
-        printf("[ST] Transform time: %lu\n", \
-              (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) - \
-              (init.tv_sec * 1000000000 + init.tv_nsec)); \
-        printf("[ST] Cleanup time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec)); \
-        printf("[ST] Total elapsed time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
+        lio_printf("[ST] Setup time: %u\n",				\
+		   (init.tv_sec * 1000000000 + init.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
+        lio_printf("[ST] Transform time: %u\n",				\
+		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) -	\
+		   (init.tv_sec * 1000000000 + init.tv_nsec));		\
+        lio_printf("[ST] Cleanup time: %u\n",				\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec));	\
+        lio_printf("[ST] Total elapsed time: %u\n",			\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
       } \
     } \
     else \
     { \
-      fprintf(stderr, "Couldn't open ELF information\n"); \
+      lio_fprintf(lio_stderr, "Couldn't open ELF information\n"); \
       if(src) st_destroy(src); \
       if(dest) st_destroy(dest); \
     } \
@@ -364,29 +364,29 @@ get_call_site() { return __builtin_return_address(0); }
       clock_gettime(CLOCK_MONOTONIC, &rewrite); \
       st_destroy(src); \
       if(ret) \
-        fprintf(stderr, "Couldn't re-write the stack\n"); \
+        lio_fprintf(lio_stderr, "Couldn't re-write the stack\n"); \
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        printf("[ST] Setup time: %lu\n", \
-              (init.tv_sec * 1000000000 + init.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
-        printf("[ST] Transform time: %lu\n", \
-              (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) - \
-              (init.tv_sec * 1000000000 + init.tv_nsec)); \
-        printf("[ST] Cleanup time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec)); \
-        printf("[ST] Total elapsed time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
+        lio_printf("[ST] Setup time: %u\n",				\
+		   (init.tv_sec * 1000000000 + init.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
+        lio_printf("[ST] Transform time: %u\n",				\
+		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec) -	\
+		   (init.tv_sec * 1000000000 + init.tv_nsec));		\
+        lio_printf("[ST] Cleanup time: %u\n",				\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (rewrite.tv_sec * 1000000000 + rewrite.tv_nsec));	\
+        lio_printf("[ST] Total elapsed time: %u\n",			\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
         post_transform = 1; \
         SET_REGS_X86_64(regset_dest); \
         SET_FRAME_X86_64(regset_dest.rbp, regset_dest.rsp); \
         SET_RIP_IMM(func); \
       } \
     } \
-    else fprintf(stderr, "Couldn't open ELF information\n"); \
+    else lio_fprintf(lio_stderr, "Couldn't open ELF information\n"); \
   })
 
 /*
@@ -407,20 +407,20 @@ get_call_site() { return __builtin_return_address(0); }
       clock_gettime(CLOCK_MONOTONIC, &start); \
       ret = st_rewrite_stack(x86_64_handle, &regset, bounds.high, \
                              x86_64_handle, &regset_dest, bounds.low); \
-      if(ret) fprintf(stderr, "Couldn't re-write the stack\n"); \
+      if(ret) lio_fprintf(lio_stderr, "Couldn't re-write the stack\n"); \
       else \
       { \
         clock_gettime(CLOCK_MONOTONIC, &end); \
-        printf("[ST] Transform time: %lu\n", \
-              (end.tv_sec * 1000000000 + end.tv_nsec) - \
-              (start.tv_sec * 1000000000 + start.tv_nsec)); \
+        lio_printf("[ST] Transform time: %u\n",				\
+		   (end.tv_sec * 1000000000 + end.tv_nsec) -		\
+		   (start.tv_sec * 1000000000 + start.tv_nsec));	\
         post_transform = 1; \
         SET_REGS_X86_64(regset_dest); \
         SET_FRAME_X86_64(regset_dest.rbp, regset_dest.rsp); \
         SET_RIP_IMM(func); \
       } \
     } \
-    else fprintf(stderr, "Invalid stack transformation handle\n"); \
+    else lio_fprintf(lio_stderr, "Invalid stack transformation handle\n"); \
   })
 
 #else

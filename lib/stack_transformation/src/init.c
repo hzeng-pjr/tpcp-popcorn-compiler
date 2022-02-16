@@ -16,7 +16,7 @@
 
 #ifdef _LOG
 /* Log file descriptor */
-FILE* __log = NULL;
+int __log = -1;
 #endif
 
 /* Userspace constructors & destructors */
@@ -28,7 +28,7 @@ __st_ctor(void)
 {
 #ifdef _LOG
 #ifndef _PER_LOG_OPEN
-  __log = fopen(LOG_FILE, "a");
+  __log = lio_open(LOG_FILE, O_RDWR | O_CREAT, 0644);
   ASSERT(__log, "could not open log file\n");
 #endif
   ST_RAW_INFO("\n");
@@ -47,7 +47,7 @@ __st_dtor(void)
 #ifdef _LOG
   ST_INFO("--> Finished execution <--\n");
 #ifndef _PER_LOG_OPEN
-  if(__log) fclose(__log);
+  if(__log) lio_close(__log);
 #endif
 #endif
 }

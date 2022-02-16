@@ -6,6 +6,7 @@
  */
 
 #include <stdio.h>
+#include <local_io.h>
 
 #define _NO_DECLARE_TIMERS
 #include "config.h"
@@ -134,19 +135,23 @@ unsigned long st_timer_get_elapsed(timer timer)
 void st_timer_print_all(void)
 {
   int i;
-  printf("[Timing] Elapsed time (%s):\n",
+  lio_printf("[Timing] Elapsed time (%s):\n",
 #if _TIMER_SRC == CLOCK_GETTIME
     "clock_gettime()"
 #else
     "gettimeofday()"
 #endif
   );
-  for(i = 0; i < NUM_TIMERS; i++)
-    printf("[Timing]   %s - %lu time(s) - %.3f us total, %.3f us average\n",
-      timers.arr[i].name,
-      timers.arr[i].num_timings,
-      ((double)timers.arr[i].elapsed) / 1000.0,
-      (((double)timers.arr[i].elapsed) / 1000.0) /
-        (double)timers.arr[i].num_timings);
+  for(i = 0; i < NUM_TIMERS; i++) {
+    int b1, b2, f1, f2;
+    b1 = ((double)timers.arr[i].elapsed) / 1000.0;
+    f1 = (((double)timers.arr[i].elapsed) / 1000.0 - b1) * 1000;
+    b2 = (((double)timers.arr[i].elapsed) / 1000.0) /
+      (double)timers.arr[i].num_timings;
+    f2 = ((((double)timers.arr[i].elapsed) / 1000.0) /
+	  (double)timers.arr[i].num_timings - b2) * 1000;
+    lio_printf("[Timing]   %s - %lu time(s) - %u[%u] us total, %u[%u] us average\n",
+	       b1, f1, b2, f2);
+  }
 }
 

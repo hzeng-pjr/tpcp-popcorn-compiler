@@ -116,7 +116,7 @@ void __st_userspace_ctor(void)
   else if(aarch64_fn) aarch64_handle = st_init(aarch64_fn);
   else {
     aarch64_fn = (char*)MALLOC(sizeof(char) * BUF_SIZE);
-    snprintf(aarch64_fn, BUF_SIZE, "%s_aarch64", __progname);
+    lio_snprintf(aarch64_fn, BUF_SIZE, "%s_aarch64", __progname);
   }
   aarch64_handle = st_init(aarch64_fn);
   if(aarch64_handle) alloc_aarch64_fn = true;
@@ -127,7 +127,7 @@ void __st_userspace_ctor(void)
   else if(powerpc64_fn) powerpc64_handle = st_init(powerpc64_fn);
   else {
     powerpc64_fn = (char*)MALLOC(sizeof(char) * BUF_SIZE);
-    snprintf(powerpc64_fn, BUF_SIZE, "%s_powerpc64", __progname);
+    lio_snprintf(powerpc64_fn, BUF_SIZE, "%s_powerpc64", __progname);
   }
   powerpc64_handle = st_init(powerpc64_fn);
   if(powerpc64_handle) alloc_powerpc64_fn = true;
@@ -137,7 +137,7 @@ void __st_userspace_ctor(void)
   else if(x86_64_fn) x86_64_handle = st_init(x86_64_fn);
   else {
     x86_64_fn = (char*)MALLOC(sizeof(char) * BUF_SIZE);
-    snprintf(x86_64_fn, BUF_SIZE, "%s_x86-64", __progname);
+    lio_snprintf(x86_64_fn, BUF_SIZE, "%s_x86-64", __progname);
   }
   x86_64_handle = st_init(x86_64_fn);
   if(x86_64_handle) alloc_x86_64_fn = true;
@@ -222,6 +222,8 @@ int st_userspace_rewrite(void* sp,
                          void* dest_regs)
 {
   st_handle src_handle, dest_handle;
+
+  lio_printf ("entering %s\n", __FUNCTION__);
 
   switch(src_arch)
   {
@@ -310,7 +312,7 @@ static bool prep_stack(void)
 #endif
   }
 
-  ST_INFO("Prepped stack for main thread, addresses %p -> %p\n",
+  ST_INFO("Prepped stack for main thread, addresses 0x%x -> 0x%x\n",
           bounds.low, bounds.high);
 
   /*
@@ -365,7 +367,7 @@ static bool get_main_stack(stack_bounds* bounds)
   free(lineptr);
   fclose(proc_fp);
 
-  ST_INFO("procfs stack limits: %p -> %p\n", bounds->low, bounds->high);
+  ST_INFO("procfs stack limits: 0x%x -> 0x%x\n", bounds->low, bounds->high);
   return found;
 }
 
@@ -403,7 +405,7 @@ static bool get_thread_stack(stack_bounds* bounds)
     ST_WARN("could not get stack limits\n");
     retval = false;
   }
-  ST_INFO("Thread stack limits: %p -> %p\n", bounds->low, bounds->high);
+  ST_INFO("Thread stack limits: 0x%x -> 0x%x\n", bounds->low, bounds->high);
   return retval;
 }
 
@@ -423,6 +425,8 @@ static int userspace_rewrite_internal(void* sp,
   stack_bounds bounds;
   stack_bounds* bounds_ptr;
 #endif
+
+  lio_printf ("entering %s\n", __FUNCTION__);
 
   if(!sp || !src_regs || !dest_regs || !src_handle || !dest_handle)
   {
@@ -461,7 +465,7 @@ static int userspace_rewrite_internal(void* sp,
   /* Find which half the current stack uses and rewrite to other. */
   cur_stack = (sp >= stack_b) ? stack_a : stack_b;
   new_stack = (sp >= stack_b) ? stack_b : stack_a;
-  ST_INFO("On stack %p, rewriting to %p\n", cur_stack, new_stack);
+  ST_INFO("On stack 0x%x, rewriting to 0x%x\n", cur_stack, new_stack);
   if(st_rewrite_stack(src_handle, src_regs, cur_stack,
                       dest_handle, dest_regs, new_stack))
   {

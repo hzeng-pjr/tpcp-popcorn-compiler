@@ -16,6 +16,7 @@
 #include <pthread.h>
 
 #include <libelf/libelf.h>
+#include <local_io.h>
 
 #include "config.h"
 #include "retvals.h"
@@ -38,29 +39,29 @@
  * Open & close files for each print call to work around limitations in
  * Popcorn's file I/O.
  */
-#define OPEN_LOG_FILE	__log = fopen(LOG_FILE, "a")
-#define CLOSE_LOG_FILE	fclose(__log)
+#define OPEN_LOG_FILE	__log = lio_open(LOG_FILE, O_RDWR | O_CREAT, 0644)
+#define CLOSE_LOG_FILE	lio_close(__log)
 #define CLOSE_GLOBAL_LOG_FILE
 #else
 #define OPEN_LOG_FILE
 #define CLOSE_LOG_FILE
-#define CLOSE_GLOBAL_LOG_FILE fclose(__log)
+#define CLOSE_GLOBAL_LOG_FILE lio_close(__log)
 #endif
 
 #ifdef _LOG
 # define ST_ERR( code, str, ... ) \
   { \
     OPEN_LOG_FILE; \
-    fprintf(stderr, "[" __FILE__ ":" STR(__LINE__) "] ERROR: " str, ##__VA_ARGS__); \
-    fprintf(__log, "[" __FILE__ ":" STR(__LINE__) "] ERROR: " str, ##__VA_ARGS__); \
+    lio_fprintf(lio_stderr, "[" __FILE__ ":" STR(__LINE__) "] ERROR: " str, ##__VA_ARGS__); \
+    lio_fprintf(__log, "[" __FILE__ ":" STR(__LINE__) "] ERROR: " str, ##__VA_ARGS__); \
     CLOSE_LOG_FILE; \
     CLOSE_GLOBAL_LOG_FILE; \
-    exit(code); \
+    lio_exit(code); \
   }
 #else
 # define ST_ERR( code, str, ... ) \
   { \
-    fprintf(stderr, "[" __FILE__ ":" STR(__LINE__) "] ERROR: " str, ##__VA_ARGS__); \
+    lio_fprintf(lio_stderr, "[" __FILE__ ":" STR(__LINE__) "] ERROR: " str, ##__VA_ARGS__); \
     exit(code); \
   }
 #endif
@@ -70,24 +71,24 @@
 # ifdef _LOG
 
 /* Log file descriptor.  Defined in src/init.c. */
-extern FILE* __log;
+extern int __log;
 
 #  define ST_RAW_INFO( str, ... ) \
   { \
     OPEN_LOG_FILE; \
-    fprintf(__log, str, ##__VA_ARGS__); fflush(__log); \
+    lio_fprintf(__log, str, ##__VA_ARGS__); \
     CLOSE_LOG_FILE; \
   }
 #  define ST_INFO( str, ... ) \
   { \
     OPEN_LOG_FILE; \
-    fprintf(__log, "[" __FILE__ ":" STR(__LINE__) "] " str, ##__VA_ARGS__); fflush(__log); \
+    lio_fprintf(__log, "[" __FILE__ ":" STR(__LINE__) "] " str, ##__VA_ARGS__); \
     CLOSE_LOG_FILE; \
   }
 #  define ST_WARN( str, ... ) \
   { \
     OPEN_LOG_FILE; \
-    fprintf(__log, "[" __FILE__ ":" STR(__LINE__) "] WARNING: " str, ##__VA_ARGS__); fflush(__log); \
+    lio_fprintf(__log, "[" __FILE__ ":" STR(__LINE__) "] WARNING: " str, ##__VA_ARGS__); \
     CLOSE_LOG_FILE; \
   }
 
@@ -95,9 +96,9 @@ extern FILE* __log;
 
 #  define ST_RAW_INFO( str, ... ) printf(str, ##__VA_ARGS__)
 #  define ST_INFO( str, ... ) \
-      printf("[" __FILE__ ":" STR(__LINE__) "] " str, ##__VA_ARGS__)
+      lio_printf("[" __FILE__ ":" STR(__LINE__) "] " str, ##__VA_ARGS__)
 #  define ST_WARN( str, ... ) \
-      fprintf(stderr, "[" __FILE__ ":" STR(__LINE__) "] WARNING: " str, ##__VA_ARGS__)
+      lio_fprintf(lio_stderr, "[" __FILE__ ":" STR(__LINE__) "] WARNING: " str, ##__VA_ARGS__)
 
 # endif /* _LOG */
 

@@ -179,12 +179,6 @@ int st_rewrite_stack(st_handle handle_src,
   TIMER_STOP(st_rewrite_stack);
   TIMER_PRINT;
 
-#ifdef _LOG
-#ifndef _PER_LOG_OPEN
-  fflush(__log);
-#endif
-#endif
-
   return 0;
 }
 
