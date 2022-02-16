@@ -41,6 +41,7 @@ extern int lio_close (int fd);
 extern void lio_exit (int status);
 extern int lio_getpid ();
 extern int lio_kill (pid_t pid, int sig);
+extern int lio_arch_prctl (int code, unsigned long addr);
 
 extern int lio_rt_sigaction (int sig, struct ksigaction *kact,
 			    struct ksigaction *koact, int nr);

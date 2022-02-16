@@ -6,6 +6,10 @@
 #define MIN(a,b) (((a)<(b))?(a):(b))
 const char _itoa_lower_digits[16] = "0123456789abcdef";
 
+#if defined(__x86_64__) || defined(__aarch64__)
+#define NEED_L
+#endif
+
 /* We always use _itoa instead of _itoa_word in ld.so since the former
    also has to be present and it is never about speed when these
    functions are used.  */
@@ -95,7 +99,7 @@ pcn_dl_debug_vdprintf (int fd, int tag_p, char *str, size_t size,
 	  char fill = ' ';
 	  int width = -1;
 	  int prec = -1;
-#if LONG_MAX != INT_MAX
+#ifdef NEED_L
 	  int long_mod = 0;
 #endif
 
@@ -126,7 +130,7 @@ pcn_dl_debug_vdprintf (int fd, int tag_p, char *str, size_t size,
 	     can use the same code for size_t.  */
 	  if (*fmt == 'l' || *fmt == 'Z')
 	    {
-#if LONG_MAX != INT_MAX
+#ifdef NEED_L
 	      long_mod = 1;
 #endif
 	      ++fmt;
@@ -140,7 +144,7 @@ pcn_dl_debug_vdprintf (int fd, int tag_p, char *str, size_t size,
 	      {
 		/* We have to make a difference if long and int have a
 		   different size.  */
-#if LONG_MAX != INT_MAX
+#ifdef NEED_L
 		unsigned long int num = (long_mod
 					 ? va_arg (arg, unsigned long int)
 					 : va_arg (arg, unsigned int));

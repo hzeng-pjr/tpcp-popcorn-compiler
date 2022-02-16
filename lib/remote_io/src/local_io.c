@@ -95,10 +95,21 @@ lio_getpid ()
 {
   return __syscall0 (SYS_getpid);
 }
+
 int
 lio_kill (pid_t pid, int sig)
 {
   return __syscall2 (SYS_kill, pid, sig);
+}
+
+int
+lio_arch_prctl (int code, unsigned long addr)
+{
+#ifdef __x86_64__
+  return __syscall2 (SYS_arch_prctl, code, addr);
+#else
+  return 0;
+#endif
 }
 
 int
