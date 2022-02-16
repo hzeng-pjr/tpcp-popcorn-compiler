@@ -22,6 +22,10 @@ struct ksigaction {
 
 struct iovec;
 
+#define lio_stdin 0
+#define lio_stdout 1
+#define lio_stderr 2
+
 extern void *lio_mmap(void *addr, size_t length, int prot, int flags,
 		     int fd, off_t offset);
 extern int lio_munmap (void *addr, size_t len);
@@ -47,6 +51,8 @@ extern void lio_memset (void *s, int c, size_t n);
 extern void lio_spin ();
 
 extern void lio_printf (const char *fmt, ...);
+extern void lio_fprintf (int fd, const char *fmt, ...);
+extern void lio_snprintf (char *str, size_t size, const char *fmt, ...);
 extern void lio_print (char *str);
 extern void lio_error (char *str);
 

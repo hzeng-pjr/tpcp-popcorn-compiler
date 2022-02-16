@@ -22,11 +22,26 @@ pcn_itoa (unsigned long long int value, char *buflim, unsigned int base,
   return buflim;
 }
 
+static void
+write_str (char *str, size_t size, struct iovec *iov, int niov)
+{
+  int ix, j, k;
+
+  for (ix = 0, j = 0; ix < size && j < niov; j++)
+    {
+      const char *buf = iov[j].iov_base;
+
+      for (k = 0; ix < size && k < iov[j].iov_len; k++, ix++)
+	str[ix] = buf[k];
+    }
+}
+
 /* Bare-bones printf implementation.  This function only knows about
    the formats and flags needed and can handle only up to 64 stripes in
    the output.  */
 static void
-pcn_dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
+pcn_dl_debug_vdprintf (int fd, int tag_p, char *str, size_t size,
+		       const char *fmt, va_list arg)
 {
 # define NIOVMAX 64
   struct iovec iov[NIOVMAX];
@@ -187,7 +202,10 @@ pcn_dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
     }
 
   /* Finally write the result.  */
-  lio_writev (fd, iov, niov);
+  if (str != NULL)
+    write_str (str, size, iov, niov);
+  else
+    lio_writev (fd, iov, niov);
 }
 
 
@@ -196,10 +214,30 @@ void
 lio_printf (const char *fmt, ...)
 {
   va_list arg;
-  int stdout = 1; // stdout
 
   va_start (arg, fmt);
-  pcn_dl_debug_vdprintf (stdout, 0, fmt, arg);
+  pcn_dl_debug_vdprintf (lio_stdout, 0, NULL, 0, fmt, arg);
   va_end (arg);
 }
 
+/* Write to debug file.  */
+void
+lio_fprintf (int fd, const char *fmt, ...)
+{
+  va_list arg;
+
+  va_start (arg, fmt);
+  pcn_dl_debug_vdprintf (fd, 0, NULL, 0, fmt, arg);
+  va_end (arg);
+}
+
+void
+lio_snprintf (char *str, size_t size, const char *fmt, ...)
+{
+  va_list arg;
+
+  va_start (arg, fmt);
+  pcn_dl_debug_vdprintf (-1, 0, str, size, fmt, arg);
+  va_end (arg);
+
+}
