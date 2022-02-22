@@ -688,7 +688,7 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
 
         if not os.path.exists(sysroot + "/lib"):
             os.makedirs(sysroot + "/lib", exist_ok=True)
-        
+
         src = os.path.join(glibc_stage_1_dir, 'csu')
         dst = os.path.join(sysroot, 'lib')
         for i in ['crt1.o', 'crti.o', 'crtn.o']:
@@ -1032,7 +1032,7 @@ def install_libelf(base_path, install_path, target, num_threads):
 
     print("Configuring libelf ({})...".format(target))
     compiler = os.path.join(install_path, 'bin',
-			    target + '-popcorn-linux-gnu-gcc')
+                            target + '-popcorn-linux-gnu-gcc')
     libelf_cflags = "-O3"
 
     args = ' '.join(['CC={}'.format(compiler),
@@ -1254,7 +1254,7 @@ DEPS=${{HOME}}/rtl/popcorn/deps/inst
 export PATH=${{POPCORN}}/bin:${{POPCORN}}/aarch64/bin:${{DEPS}}/bin:$PATH
 """
 
-    f = open ("setpath", "w")
+    f = open (install_path + "/setpath", "w")
     f.write (setpath.format(install_path))
     f.close ()
 
