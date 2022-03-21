@@ -51,7 +51,9 @@ llvm_version = 9
 
 # Binutils 2.32 URL
 #binutils_url = 'http://ftp.gnu.org/gnu/binutils/binutils-2.32.tar.bz2'
-binutils_url = 'file:///scratch/mirrors/binutils-2.32.tar.bz2'
+#binutils_url = 'file:///scratch/mirrors/binutils-2.32.tar.bz2'
+binutils_dev = "/scratch/pjr/binutils-gdb"
+local_binutils = True
 
 # GNU libc (glibc)
 
@@ -438,6 +440,7 @@ def install_binutils(base_path, install_path, num_threads, target):
                        '--target={}'.format(target + '-popcorn-linux-gnu'),
                        '--enable-gold',
                        '--enable-ld',
+                       '--disable-gdb',
                        '--disable-libquadmath',
                        '--disable-libquadmath-support',
                        '--disable-libstdcxx',
@@ -447,21 +450,29 @@ def install_binutils(base_path, install_path, num_threads, target):
     # DOWNLOAD BINUTILS
     #=====================================================
     print('Downloading binutils source...')
-    try:
-        urllib.request.urlretrieve(binutils_url, 'binutils-2.32.tar.bz2')
-        with tarfile.open('binutils-2.32.tar.bz2', 'r:bz2') as f:
-            f.extractall(path=os.path.join(install_path, 'src'))
-    except Exception as e:
-        print('Could not download/extract binutils source ({})!'.format(e))
-        sys.exit(1)
 
-    #=====================================================
-    # PATCH BINUTILS
-    #=====================================================
-    print("Patching binutils...")
-    with open(patch_path, 'r') as patch_file:
-        args = ['patch', '-p1', '-d', binutils_install_path]
-        run_cmd('patch binutils', args, patch_file)
+    if local_binutils:
+        args = ['rm', '-rf', binutils_install_path]
+        run_cmd('cleanup binutils sources', args)
+
+        args = ['cp', '-a', binutils_dev, binutils_install_path]
+        run_cmd('download binutils source', args)
+    else:
+        try:
+            urllib.request.urlretrieve(binutils_url, 'binutils-2.32.tar.bz2')
+            with tarfile.open('binutils-2.32.tar.bz2', 'r:bz2') as f:
+                f.extractall(path=os.path.join(install_path, 'src'))
+        except Exception as e:
+            print('Could not download/extract binutils source ({})!'.format(e))
+            sys.exit(1)
+
+            #=====================================================
+            # PATCH BINUTILS
+            #=====================================================
+            print("Patching binutils...")
+            with open(patch_path, 'r') as patch_file:
+                args = ['patch', '-p1', '-d', binutils_install_path]
+                run_cmd('patch binutils', args, patch_file)
 
     #=====================================================
     # BUILD AND INSTALL BINUTILS
