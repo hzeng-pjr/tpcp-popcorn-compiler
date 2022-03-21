@@ -9,10 +9,11 @@ POPCORN        := /usr/local/popcorn
 POPCORN_X86_64 := $(POPCORN)/x86_64
 COMMON         := $(shell readlink -f ../../common)
 
-CC			:= gcc
+CC			:= x86_64-popcorn-linux-gnu-gcc
 CFLAGS		:= -O3 -g -Wall -Iinclude -I$(COMMON)/include \
 		   -I$(POPCORN)/x86_64/include
-LDFLAGS	:= -static
+LDFLAGS	:= -Wl,-dynamic-linker,$(POPCORN_X86_64)/lib/ld-2.31.so \
+		   -Wl,-rpath,$(POPCORN_X86_64)/lib
 LIB    	:= -lelf -L$(POPCORN)/x86_64/lib
 
 HDR := $(shell ls include/*.h) $(shell ls $(COMMON)/include/*.h)
