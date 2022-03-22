@@ -1,6 +1,7 @@
 #ifndef IO_H
 #define IO_H
 
+#include <unistd.h>
 #include <stddef.h>
 #include <sys/mman.h>
 #include <signal.h>
@@ -40,6 +41,7 @@ extern int lio_open (const char *pathname, int flags, mode_t mode);
 extern int lio_close (int fd);
 extern void lio_exit (int status);
 extern int lio_getpid ();
+extern int lio_gettid ();
 extern int lio_kill (pid_t pid, int sig);
 extern int lio_arch_prctl (int code, unsigned long addr);
 
@@ -51,7 +53,7 @@ extern int lio_sigaddset (sigset_t *set, int sig);
 extern int lio_strlen ();
 extern int lio_strcmp (char *a, char *b);
 extern void lio_memset (void *s, int c, size_t n);
-extern void lio_memcpy (void *d, void *s, size_t n);
+extern void lio_memcpy (void *restrict d, const void *s, size_t n);
 extern void lio_spin ();
 
 extern int lio_printf (const char *fmt, ...);

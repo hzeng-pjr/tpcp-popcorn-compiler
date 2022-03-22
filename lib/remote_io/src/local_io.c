@@ -97,6 +97,12 @@ lio_getpid ()
 }
 
 int
+lio_gettid ()
+{
+  return __syscall0 (SYS_gettid);
+}
+
+int
 lio_kill (pid_t pid, int sig)
 {
   return __syscall2 (SYS_kill, pid, sig);
@@ -199,11 +205,11 @@ lio_memset (void *s, int c, size_t n)
 }
 
 void
-lio_memcpy (void *d, void *s, size_t n)
+lio_memcpy (void *restrict d, const void *s, size_t n)
 {
   int i;
   uint8_t *dd = d;
-  uint8_t *ss = s;
+  const uint8_t *ss = s;
 
   for (i = 0; i < n; i++)
     dd[i] = ss[i];
