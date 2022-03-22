@@ -456,7 +456,7 @@ static int userspace_rewrite_internal(void* sp,
     return 1;
   }
 
-  ST_INFO("Thread %ld beginning re-write\n", syscall(SYS_gettid));
+  ST_INFO("Thread %lu beginning re-write\n", lio_gettid ());
 
   /* Divide stack into two halves. */
   stack_a = bounds.high;

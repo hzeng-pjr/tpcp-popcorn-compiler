@@ -43,11 +43,14 @@
 /*
  * Select TLS implementation.  Popcorn compiler support for TLS is a little
  * iffy, so fall back to the pthreads implementation if necessary.
+ *
+ * NOTE: At present, glibc-based builds need to use COMPILER_TLS, as libpthread
+ * not available during stack rewriting.
  */
 #define COMPILER_TLS 0
 #define PTHREAD_TLS 1
-#define _TLS_IMPL PTHREAD_TLS
-//COMPILER_TLS
+//#define _TLS_IMPL PTHREAD_TLS
+#define _TLS_IMPL COMPILER_TLS
 
 /* Select either global or per-thread malloc implementation */
 //#define PER_NODE_MALLOC 1

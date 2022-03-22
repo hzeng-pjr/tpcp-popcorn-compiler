@@ -9,6 +9,7 @@
  * Date: 11/12/2015
  */
 
+#include <local_io.h>
 #include "definitions.h"
 #include "arch/aarch64/regs.h"
 
@@ -87,7 +88,7 @@ static void* regset_init_aarch64(const void* regs)
 {
   struct regset_aarch64* new = MALLOC(sizeof(struct regset_aarch64));
   ASSERT(new, "could not allocate regset (aarch64)\n");
-  *new = *(struct regset_aarch64*)regs;
+  lio_memcpy (new, regs, sizeof (struct regset_aarch64));
   return new;
 }
 
@@ -100,19 +101,19 @@ static void regset_clone_aarch64(const void* src, void* dest)
 {
   const struct regset_aarch64* srcregs = (const struct regset_aarch64*)src;
   struct regset_aarch64* destregs = (struct regset_aarch64*)dest;
-  *destregs = *srcregs;
+  lio_memcpy (destregs, srcregs, sizeof (struct regset_aarch64));
 }
 
 static void regset_copyin_aarch64(void* in, const void* out)
 {
   struct regset_aarch64* cur = (struct regset_aarch64*)in;
-  *cur = *(struct regset_aarch64*)out;
+  lio_memcpy (cur, out, sizeof (struct regset_aarch64));
 }
 
 static void regset_copyout_aarch64(const void* in, void* out)
 {
   const struct regset_aarch64* cur = (const struct regset_aarch64*)in;
-  *(struct regset_aarch64*)out = *cur;
+  lio_memcpy (out, cur, sizeof (struct regset_aarch64));
 }
 
 static void* pc_aarch64(const void* regset)

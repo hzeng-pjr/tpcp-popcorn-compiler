@@ -54,10 +54,10 @@ static inline void restore_callee_saved_regs(rewrite_context ctx, int act)
   for(i = unwind_start; i < unwind_end; i++)
   {
     saved_loc = REGOPS(ctx)->fbp(ctx->acts[act - 1].regs) + locs[i].offset;
-    ST_INFO("Callee-saved: %u at FBP + %d (%p)\n",
+    ST_INFO("Callee-saved: %u at FBP + %u (%lx)\n",
             locs[i].reg, locs[i].offset, saved_loc);
-    memcpy(REGOPS(ctx)->reg(ctx->acts[act].regs, locs[i].reg), saved_loc,
-           PROPS(ctx)->callee_reg_size(locs[i].reg));
+    lio_memcpy(REGOPS(ctx)->reg(ctx->acts[act].regs, locs[i].reg), saved_loc,
+               PROPS(ctx)->callee_reg_size(locs[i].reg));
     bitmap_set(ctx->acts[act - 1].callee_saved, locs[i].reg);
   }
 
@@ -69,7 +69,7 @@ static inline void restore_callee_saved_regs(rewrite_context ctx, int act)
   if(REGOPS(ctx)->has_ra_reg)
     REGOPS(ctx)->set_pc(ctx->acts[act].regs,
                         REGOPS(ctx)->ra_reg(ctx->acts[act].regs));
-  ST_INFO("Return address: %p\n", REGOPS(ctx)->pc(ctx->acts[act].regs));
+  ST_INFO("Return address: %lx\n", REGOPS(ctx)->pc(ctx->acts[act].regs));
 }
 
 /*
@@ -87,7 +87,7 @@ static inline void setup_frame_bounds(rewrite_context ctx, int act)
   void *new_sp;
 
   ASSERT(act > 0, "Cannot set up outermost activation using this method\n");
-  ASSERT(ctx->acts[act - 1].cfa, "Invalid CFA for frame %d\n", act - 1);
+  ASSERT(ctx->acts[act - 1].cfa, "Invalid CFA for frame %u\n", act - 1);
   ASSERT(ctx->acts[act].site.addr, "Invalid call site information\n");
 
   new_sp = ctx->acts[act - 1].cfa;
@@ -97,7 +97,7 @@ static inline void setup_frame_bounds(rewrite_context ctx, int act)
 
   ASSERT(REGOPS(ctx)->fbp(ctx->acts[act].regs), "Invalid frame pointer\n");
 
-  ST_INFO("New frame bounds: SP=%p, FBP=%p, CFA=%p\n",
+  ST_INFO("New frame bounds: SP=%lx, FBP=%lx, CFA=%lx\n",
           REGOPS(ctx)->sp(ctx->acts[act].regs),
           REGOPS(ctx)->fbp(ctx->acts[act].regs),
           ctx->acts[act].cfa);
@@ -168,7 +168,7 @@ void pop_frame(rewrite_context ctx, bool setup_bounds)
   int next_frame = ctx->act + 1;
 
   TIMER_FG_START(pop_frame);
-  ST_INFO("Popping frame (CFA = %p)\n", ACT(ctx).cfa);
+  ST_INFO("Popping frame (CFA = %lx)\n", ACT(ctx).cfa);
 
   setup_regset(ctx, next_frame);
   setup_callee_saved_bits(ctx, next_frame);
@@ -198,7 +198,7 @@ void pop_frame_funcentry(rewrite_context ctx)
   int next_frame = ctx->act + 1;
 
   TIMER_FG_START(pop_frame);
-  ST_INFO("Popping frame (CFA = %p)\n", ACT(ctx).cfa);
+  ST_INFO("Popping frame (CFA = %lx)\n", ACT(ctx).cfa);
 
   setup_regset(ctx, next_frame);
   setup_callee_saved_bits(ctx, next_frame);
@@ -212,7 +212,7 @@ void pop_frame_funcentry(rewrite_context ctx)
   else
     REGOPS(ctx)->set_pc(NEXT_ACT(ctx).regs,
                         *(void**)REGOPS(ctx)->sp(ACT(ctx).regs));
-  ST_INFO("Return address: %p\n", REGOPS(ctx)->pc(NEXT_ACT(ctx).regs));
+  ST_INFO("Return address: %lx\n", REGOPS(ctx)->pc(NEXT_ACT(ctx).regs));
 
   setup_frame_bounds(ctx, next_frame);
 

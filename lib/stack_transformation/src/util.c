@@ -6,6 +6,7 @@
  */
 
 #include <libelf/gelf.h>
+#include <local_io.h>
 
 #include "definitions.h"
 #include "arch_regs.h"
@@ -127,7 +128,7 @@ bool get_site_by_addr(st_handle handle, void* ret_addr, call_site* cs)
   {
     mid = (max + min) / 2;
     if(handle->sites_addr[mid].addr == retaddr) {
-      *cs = handle->sites_addr[mid];
+      lio_memcpy (cs, &handle->sites_addr[mid], sizeof (call_site));
       found = true;
       break;
     }
@@ -158,7 +159,7 @@ bool get_site_by_id(st_handle handle, uint64_t csid, call_site* cs)
   {
     mid = (max + min) / 2;
     if(handle->sites_id[mid].id == csid) {
-      *cs = handle->sites_id[mid];
+      lio_memcpy (cs, &handle->sites_id[mid], sizeof (call_site));
       found = true;
       break;
     }

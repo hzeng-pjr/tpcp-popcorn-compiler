@@ -6,6 +6,7 @@
  * Date: 11/12/2015
  */
 
+#include <local_io.h>
 #include "definitions.h"
 #include "arch/x86_64/regs.h"
 
@@ -81,7 +82,7 @@ static void* regset_init_x86_64(const void* regs)
 {
   struct regset_x86_64* new = MALLOC(sizeof(struct regset_x86_64));
   ASSERT(new, "could not allocate regset (x86-64)\n");
-  *new = *(struct regset_x86_64*)regs;
+  lio_memcpy (new, regs, sizeof (struct regset_x86_64));
   return new;
 }
 
@@ -94,19 +95,19 @@ static void regset_clone_x86_64(const void* src, void* dest)
 {
   const struct regset_x86_64* srcregs = (const struct regset_x86_64*)src;
   struct regset_x86_64* destregs = (struct regset_x86_64*)dest;
-  *destregs = *srcregs;
+  lio_memcpy (destregs, srcregs, sizeof (struct regset_x86_64));
 }
 
 static void regset_copyin_x86_64(void* in, const void* out)
 {
   struct regset_x86_64* cur = (struct regset_x86_64*)in;
-  *cur = *(struct regset_x86_64*)out;
+  lio_memcpy (cur, out, sizeof (struct regset_x86_64));
 }
 
 static void regset_copyout_x86_64(const void* in, void* out)
 {
   const struct regset_x86_64* cur = (const struct regset_x86_64*)in;
-  *(struct regset_x86_64*)out = *cur;
+  lio_memcpy (out, cur, sizeof (struct regset_x86_64));
 }
 
 static void* pc_x86_64(const void* regset)

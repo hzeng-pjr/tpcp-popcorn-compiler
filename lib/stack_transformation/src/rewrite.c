@@ -159,7 +159,7 @@ int st_rewrite_stack(st_handle handle_src,
     ASSERT(saved_fbp, "invalid saved frame pointer location\n");
     pop_frame(dest, true);
     *saved_fbp = (uint64_t)REGOPS(dest)->fbp(ACT(dest).regs);
-    ST_INFO("Old FP saved to %p\n", saved_fbp);
+    ST_INFO("Old FP saved to %lx\n", saved_fbp);
   }
 
   // Note: there may be a few things to fix up in the innermost function, e.g.,
@@ -244,7 +244,7 @@ static rewrite_context init_src_context(st_handle handle,
   // Note: we need both the SP & call site information to set up CFA
   if(!get_site_by_addr(handle, REGOPS(ctx)->pc(ACT(ctx).regs), &ACT(ctx).site))
     ST_ERR(1, "could not get source call site information for outermost frame "
-           "(address=%p)\n", REGOPS(ctx)->pc(ACT(ctx).regs));
+           "(address=%lx)\n", REGOPS(ctx)->pc(ACT(ctx).regs));
   ACT(ctx).cfa = calculate_cfa(ctx, 0);
 
   TIMER_STOP(init_src_context);
@@ -313,7 +313,7 @@ static void free_context(rewrite_context ctx)
   node = list_begin(fixup, &ctx->stack_pointers);
   while(node)
   {
-    ST_WARN("could not find stack pointer fixup for %p (in activation %d)\n",
+    ST_WARN("could not find stack pointer fixup for %lx (in activation %d)\n",
             node->data.src_addr, node->data.act);
     node = list_remove(fixup, &ctx->stack_pointers, node);
   }
@@ -368,11 +368,11 @@ static void unwind_and_size(rewrite_context src,
      * frame addresses and frame-base pointer locations.
      */
     if(!get_site_by_addr(src->handle, REGOPS(src)->pc(ACT(src).regs), &ACT(src).site))
-      ST_ERR(1, "could not get source call site information (address=%p)\n",
+      ST_ERR(1, "could not get source call site information (address=%lx)\n",
              REGOPS(src)->pc(ACT(src).regs));
 
     if(!get_site_by_id(dest->handle, ACT(src).site.id, &ACT(dest).site))
-      ST_ERR(1, "could not get destination call site information (address=%p, ID=%ld)\n",
+      ST_ERR(1, "could not get destination call site information (address=%lx, ID=%ld)\n",
              REGOPS(src)->pc(ACT(src).regs), ACT(src).site.id);
 
     /* Update stack size with newly discovered stack frame's size */
@@ -400,8 +400,8 @@ static void unwind_and_size(rewrite_context src,
   ASSERT(fn, "Could not find function address of outermost frame\n");
   REGOPS(dest)->set_pc(ACT(dest).regs, fn);
 
-  ST_INFO("Top of new stack: %p\n", dest->stack);
-  ST_INFO("Rewriting destination as if entering function @ %p\n", fn);
+  ST_INFO("Top of new stack: %lx\n", dest->stack);
+  ST_INFO("Rewriting destination as if entering function @ %lx\n", fn);
 
   /* Clear the callee-saved bitmaps for all destination frames. */
   memset(dest->callee_saved_pool, 0, bitmap_size(REGOPS(dest)->num_regs) *
@@ -473,7 +473,7 @@ static bool rewrite_val(rewrite_context src, const live_value* val_src,
   {
     if(stack_addr >= PREV_ACT(src).cfa || src->act == 0)
     {
-      ST_INFO("Adding fixup for pointer-to-stack %p\n", stack_addr);
+      ST_INFO("Adding fixup for pointer-to-stack %lx\n", stack_addr);
       fixup_data.src_addr = stack_addr;
       fixup_data.act = dest->act;
       fixup_data.dest_loc = val_dest;
@@ -500,7 +500,7 @@ static bool rewrite_val(rewrite_context src, const live_value* val_src,
                                       dest, val_dest,
                                       fixup_node->data.src_addr)))
       {
-        ST_INFO("Found fixup for %p (in frame %d)\n",
+        ST_INFO("Found fixup for %lx (in frame %d)\n",
                 fixup_node->data.src_addr, fixup_node->data.act);
 
         put_val_data(dest,
@@ -544,7 +544,7 @@ fixup_local_pointers(rewrite_context src, rewrite_context dest)
       // pointing to garbage data (e.g. uninitialized local values)
       if(fixup_node->data.act != src->act)
       {
-        ST_WARN("unresolved fixup for %p (frame %d)\n",
+        ST_WARN("unresolved fixup for %lx (frame %d)\n",
                 fixup_node->data.src_addr, fixup_node->data.act);
         fixup_node = list_next(fixup, fixup_node);
         continue;
@@ -576,7 +576,7 @@ fixup_local_pointers(rewrite_context src, rewrite_context dest)
                                         dest, val_dest,
                                         fixup_node->data.src_addr)))
         {
-          ST_INFO("Found local fixup for %p\n", fixup_node->data.src_addr);
+          ST_INFO("Found local fixup for %lx\n", fixup_node->data.src_addr);
 
           put_val_data(dest,
                        fixup_node->data.dest_loc,
@@ -603,7 +603,7 @@ static void rewrite_frame(rewrite_context src, rewrite_context dest)
   bool needs_local_fixup = false;
 
   TIMER_FG_START(rewrite_frame);
-  ST_INFO("Rewriting frame (CFA: %p -> %p)\n", ACT(src).cfa, ACT(dest).cfa);
+  ST_INFO("Rewriting frame (CFA: %lx -> %lx)\n", ACT(src).cfa, ACT(dest).cfa);
 
   /* Copy live values */
   src_offset = ACT(src).site.live_offset;

@@ -76,7 +76,7 @@ st_handle st_init(const char* fn)
   handle->fn = fn;
 
   /* Initialize libelf data */
-  if((handle->fd = open(fn, O_RDONLY, 0)) < 0) goto free_handle;
+  if((handle->fd = lio_open(fn, O_RDONLY, 0)) < 0) goto free_handle;
   if(!(handle->elf = elf_begin(handle->fd, ELF_C_READ, NULL))) goto close_file;
 
   /* Get architecture-specific information */

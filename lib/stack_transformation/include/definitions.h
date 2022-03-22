@@ -94,7 +94,7 @@ extern int __log;
 
 # else
 
-#  define ST_RAW_INFO( str, ... ) printf(str, ##__VA_ARGS__)
+#  define ST_RAW_INFO( str, ... ) lio_printf(str, ##__VA_ARGS__)
 #  define ST_INFO( str, ... ) \
       lio_printf("[" __FILE__ ":" STR(__LINE__) "] " str, ##__VA_ARGS__)
 #  define ST_WARN( str, ... ) \
