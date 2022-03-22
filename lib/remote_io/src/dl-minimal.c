@@ -39,6 +39,9 @@ write_str (char *str, size_t size, struct iovec *iov, int niov)
 	str[ix] = buf[k];
     }
 
+  if (ix < size)
+    str[ix] = '\0';
+
   return ix;
 }
 
