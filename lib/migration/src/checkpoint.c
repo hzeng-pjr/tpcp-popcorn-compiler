@@ -251,4 +251,12 @@ void migrate(enum arch dst_arch, void (*callback) (void *), void *callback_data)
 	__migrate_shim_internal(dst_arch, callback, callback_data);
 }
 
+int __libc_start_main_popcorn (int (*main) (int, char **, char **),
+			       int argc, char **argv, char **environ)
+{
+  lio_exit (main (argc, argv, environ));
+
+  return 0;
+}
+
 #endif
