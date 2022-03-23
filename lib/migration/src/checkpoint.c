@@ -43,7 +43,8 @@ static inline void set_restore_context(int val)
 	__restore_context=val;
 }
 
-#define MUSL_PTHREAD_DESCRIPTOR_SIZE 288
+/* Used by criu-het to restore the TLS.  */
+void* tls_dst=0x0;
 
 //TODO: per thread
 union {
@@ -57,74 +58,6 @@ static void* __attribute__((noinline))
 get_call_site() { return __builtin_return_address(0); };
 
 static void dummy(){lio_printf("%s: called\n", __func__);};
-
-void
-test_signals ()
-{
-		fprintf(stdout, "%s %d\n", __func__, __LINE__);
-		set_restore_context(1);
-		fprintf(stdout, "%s %d\n", __func__, __LINE__);
-		clear_migrate_flag();
-		signal(SIGALRM, dummy);
-		sigset_t old_sig_set;
-		sigset_t new_sig_set;
-		sigemptyset(&new_sig_set);
-		//sigfillset(&new_sig_set, SIGALRM); sigdelset(&new_sig_set, SIGALRM);
-		sigaddset(&new_sig_set, SIGALRM);
-		sigprocmask(SIG_UNBLOCK, &new_sig_set, &old_sig_set);
-		raise(SIGALRM); /* wil be catched by ptrace */
-		sigprocmask(SIG_SETMASK, &old_sig_set, NULL);
-		fprintf(stdout, "%s raising done %d\n", __func__, __LINE__);
-		lio_exit (0);
-}
-
-void
-test_lio_signals ()
-{
-		sigset_t old_sig_set;
-		sigset_t new_sig_set;
-		sigset_t sigtmp_set;
-		sigset_t sigall_set = {
-   			.__val = {[0 ...  _SIGSET_NWORDS-1 ] =  -1 }
-		};
-
-		lio_printf("%s %u\n", __func__, __LINE__);
-		set_restore_context(1);
-		lio_printf("%s %u\n", __func__, __LINE__);
-		clear_migrate_flag();
-
-		//signal(SIGALRM, dummy);
-		struct ksigaction kact, koact;
-
-		kact.handler = dummy;
-		lio_memset (&kact.mask, 0, sizeof (sigset_t));
-		kact.flags = 0;
-		kact.restorer = NULL;
-		lio_rt_sigaction (SIGALRM, &kact, &koact, _NSIG / 8);
-
-		//sigemptyset(&new_sig_set);
-		lio_memset (&new_sig_set, 0, sizeof (new_sig_set));
-
-		//sigaddset(&new_sig_set, SIGALRM);
-		lio_sigaddset (&new_sig_set, SIGALRM);
-
-		//sigprocmask(SIG_UNBLOCK, &new_sig_set, &old_sig_set);
-		lio_sigprocmask (SIG_UNBLOCK, &new_sig_set, &old_sig_set,
-				_NSIG / 8);
-
-		lio_printf ("raising SIGALRM\n");
-
-		lio_sigprocmask (SIG_BLOCK, &sigall_set, &sigtmp_set,
-				_NSIG / 8);
-
-		//raise(SIGALRM); /* wil be catched by ptrace */
-		lio_tgkill (lio_getpid (), lio_gettid (), SIGALRM);
-
-		//sigprocmask(SIG_SETMASK, &old_sig_set, NULL);
-		lio_sigprocmask (SIG_UNBLOCK, &old_sig_set, NULL, NSIG / 8);
-
-		lio_printf("%s raising done %u\n", __func__, __LINE__);
-}
 
 void
 __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *callback_data)
