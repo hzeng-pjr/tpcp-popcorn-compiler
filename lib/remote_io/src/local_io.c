@@ -109,6 +109,12 @@ lio_kill (pid_t pid, int sig)
 }
 
 int
+lio_tgkill (pid_t pid, pid_t tid, int sig)
+{
+  return __syscall3 (SYS_tgkill, pid, tid, sig);
+}
+
+int
 lio_arch_prctl (int code, unsigned long addr)
 {
 #ifdef __x86_64__
