@@ -34,6 +34,7 @@ endif
 CFLAGS_ARM     := $(CFLAGS) -target aarch64-linux-gnu
 CFLAGS_POWERPC := $(CFLAGS) -target powerpc64le-linux-gnu
 CFLAGS_X86     := $(CFLAGS) -target x86_64-linux-gnu
+CFLAGS_LIBC    := -ffunction-sections -fdata-sections -popcorn-libc -fno-unwind-tables -Os
 
 COMMON      := $(shell readlink -f ../../common/include)
 INC         := -I./include -I$(COMMON)
@@ -123,6 +124,10 @@ $(BUILD_ARM)/%.o: src/%.c $(HDR_ARM)
 	@$(OPT) $(OPT_FLAGS) -o $@.bc $@.bc
 	@$(CC) $(CFLAGS_ARM) -o $@ $@.bc
 
+$(BUILD_ARM)/__libc_start_main_popcorn.o: src/__libc_start_main_popcorn.c $(HDR_ARM)
+	@echo " [CC] $< (aarch64)"
+	@$(CC) -O0 -target aarch64-linux-gnu $(CFLAGS_LIBC) $(INC_ARM) -c -o $@ $<
+
 $(BUILD_ARM)/arch/aarch64/%.o: src/arch/aarch64/%.s
 	@echo " [AS] $< (aarch64)"
 	@$(AS_ARM) $(AS_FLAGS_ARM) -o $@ $<
@@ -147,6 +152,10 @@ $(BUILD_X86)/%.o: src/%.c $(HDR_X86)
 	@$(CC) $(CFLAGS_X86) $(INC_X86) -emit-llvm -o $@.bc $<
 	@$(OPT) $(OPT_FLAGS) -o $@.bc $@.bc
 	@$(CC) $(CFLAGS_X86) -o $@ $@.bc
+
+$(BUILD_X86)/__libc_start_main_popcorn.o: src/__libc_start_main_popcorn.c $(HDR_X86)
+	@echo " [CC] $< (x86-64)"
+	@$(CC) -O0 -target x86_64-linux-gnu $(CFLAGS_LIBC) $(INC_X86) -c -o $@ $<
 
 $(BUILD_X86)/arch/aarch64/%.o: src/arch/aarch64/%.s $(BUILD_X86)/arch/aarch64/.dir
 	@echo " [AS] $< (x86-64)"

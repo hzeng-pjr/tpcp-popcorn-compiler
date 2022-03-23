@@ -45,37 +45,12 @@ static inline void set_restore_context(int val)
 
 #define MUSL_PTHREAD_DESCRIPTOR_SIZE 288
 
-/* musl-libc's architecture-specific function for setting the TLS pointer */
-int __set_thread_area(void *);
-
-/*
- * Convert a pointer to the start of the TLS region to the
- * architecture-specific thread pointer.  Derived from musl-libc's
- * per-architecture thread-pointer locations -- see each architecture's
- * "pthread_arch.h" file.
- */
-static inline void *get_thread_pointer(void *raw_tls, enum arch dest)
-{
-	switch (dest) {
-	case ARCH_AARCH64:
-		return raw_tls - 16;
-	case ARCH_POWERPC64:
-		return raw_tls + 0x7000;	// <- TODO verify
-	case ARCH_X86_64:
-		return raw_tls - MUSL_PTHREAD_DESCRIPTOR_SIZE;
-	default:
-		assert(0 && "Unsupported architecture!");
-		return NULL;
-	}
-}
-
 //TODO: per thread
 union {
 	struct regset_aarch64 aarch;
 	struct regset_powerpc64 powerpc;
 	struct regset_x86_64 x86;
 } regs_dst;
-void* tls_dst=0x0;
 
 /* Generate a call site to get rewriting metadata for outermost frame. */
 static void* __attribute__((noinline))
@@ -152,10 +127,6 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		}
 		lio_printf("dest arch is %u\n", dst_arch);
 
-		unsigned long tls_ptr = (uintptr_t) GET_TLS_POINTER;
-		lio_printf ("TLS @ 0x%x\n", tls_ptr);
-
-		tls_dst = get_thread_pointer(GET_TLS_POINTER, dst_arch);
 		lio_printf("%s %u\n", __func__, __LINE__);
 		set_restore_context(1);
 		lio_printf("%s %u\n", __func__, __LINE__);
@@ -237,26 +208,22 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 	lio_printf ("pcn_server_port = %d\n", pcn_server_port);
 }
 
+extern int __libc_start_main_popcorn (void *, int, void *, void *);
+
 /* Check if we should migrate, and invoke migration. */
 void check_migrate(void (*callback) (void *), void *callback_data)
 {
 	enum arch dst_arch = do_migrate(NULL);
 	if (dst_arch >= 0)
 		__migrate_shim_internal(dst_arch, callback, callback_data);
+	else if (dst_arch == 100)
+		__libc_start_main_popcorn (NULL, 0, NULL, NULL);
 }
 
 /* Invoke migration to a particular node if we're not already there. */
 void migrate(enum arch dst_arch, void (*callback) (void *), void *callback_data)
 {
 	__migrate_shim_internal(dst_arch, callback, callback_data);
-}
-
-int __libc_start_main_popcorn (int (*main) (int, char **, char **),
-			       int argc, char **argv, char **environ)
-{
-  lio_exit (main (argc, argv, environ));
-
-  return 0;
 }
 
 #endif

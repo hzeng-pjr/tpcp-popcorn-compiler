@@ -264,10 +264,10 @@ void clear_activation(st_handle handle, activation* act)
 {
   ASSERT(act, "invalid arguments to free_activation()\n");
 
-  memset(&act->site, 0, sizeof(call_site));
+  lio_memset(&act->site, 0, sizeof(call_site));
   act->cfa = NULL;
-  memset(act->regs, 0, handle->regops->regset_size);
+  lio_memset(act->regs, 0, handle->regops->regset_size);
   act->regs = NULL;
-  memset(&act->callee_saved, 0, sizeof(bitmap));
+  lio_memset(&act->callee_saved, 0, sizeof(bitmap));
 }
 

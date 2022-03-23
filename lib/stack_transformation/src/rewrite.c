@@ -151,7 +151,7 @@ int st_rewrite_stack(st_handle handle_src,
   /* Rewrite rest of frames. */
   for(src->act = 1; src->act < src->num_acts - 1; src->act++)
   {
-    ST_INFO("--> Rewriting frame %d <--\n", src->act);
+    ST_INFO("--> Rewriting frame %u <--\n", src->act);
 
     set_return_address(dest, (void*)NEXT_ACT(dest).site.addr);
     rewrite_frame(src, dest);
@@ -164,7 +164,7 @@ int st_rewrite_stack(st_handle handle_src,
 
   // Note: there may be a few things to fix up in the innermost function, e.g.,
   // the TOC pointer on PowerPC
-  ST_INFO("--> Rewriting frame %d (starting function) <--\n", src->act);
+  ST_INFO("--> Rewriting frame %u (starting function) <--\n", src->act);
   rewrite_frame(src, dest);
 
   TIMER_STOP(rewrite_stack);
@@ -372,7 +372,7 @@ static void unwind_and_size(rewrite_context src,
              REGOPS(src)->pc(ACT(src).regs));
 
     if(!get_site_by_id(dest->handle, ACT(src).site.id, &ACT(dest).site))
-      ST_ERR(1, "could not get destination call site information (address=%lx, ID=%ld)\n",
+      ST_ERR(1, "could not get destination call site information (address=%lx, ID=%lu)\n",
              REGOPS(src)->pc(ACT(src).regs), ACT(src).site.id);
 
     /* Update stack size with newly discovered stack frame's size */
@@ -386,7 +386,7 @@ static void unwind_and_size(rewrite_context src,
 
   ASSERT(stack_size < MAX_STACK_SIZE / 2, "invalid stack size\n");
 
-  ST_INFO("Number of live activations: %d\n", src->num_acts);
+  ST_INFO("Number of live activations: %u\n", src->num_acts);
   ST_INFO("Destination stack size: %lu\n", stack_size);
 
   /* Reset to outer-most frame. */
@@ -404,7 +404,7 @@ static void unwind_and_size(rewrite_context src,
   ST_INFO("Rewriting destination as if entering function @ %lx\n", fn);
 
   /* Clear the callee-saved bitmaps for all destination frames. */
-  memset(dest->callee_saved_pool, 0, bitmap_size(REGOPS(dest)->num_regs) *
+  lio_memset(dest->callee_saved_pool, 0, bitmap_size(REGOPS(dest)->num_regs) *
                                      dest->num_acts);
 
   TIMER_STOP(unwind_and_size);

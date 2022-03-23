@@ -108,8 +108,8 @@ void put_val(rewrite_context src,
     callee_addr = callee_saved_loc(dest, dest_val->regnum, dest->act);
 
   ASSERT(dest_addr, "invalid destination location\n");
-  memcpy(dest_addr, src_addr, VAL_SIZE(dest_val));
-  if(callee_addr) memcpy(callee_addr, src_addr, VAL_SIZE(dest_val));
+  lio_memcpy(dest_addr, src_addr, VAL_SIZE(dest_val));
+  if(callee_addr) lio_memcpy(callee_addr, src_addr, VAL_SIZE(dest_val));
 
   TIMER_FG_STOP(put_val);
 }
