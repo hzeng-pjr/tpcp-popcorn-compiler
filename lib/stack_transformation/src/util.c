@@ -203,7 +203,7 @@ bool get_unwind_offset_by_addr(st_handle handle, void* addr, unwind_addr* meta)
       {
         ST_WARN("cannot check range of last record (0x%lx = record %ld?)\n",
                 addr_int, mid);
-        *meta = handle->unwind_addrs[mid];
+        lio_memcpy (meta, &handle->unwind_addrs[mid], sizeof (unwind_addr));
         found = true;
       }
       break;
@@ -211,7 +211,7 @@ bool get_unwind_offset_by_addr(st_handle handle, void* addr, unwind_addr* meta)
 
     if(IN_RANGE(mid, addr_int))
     {
-      *meta = handle->unwind_addrs[mid];
+      lio_memcpy (meta, &handle->unwind_addrs[mid], sizeof (unwind_addr));
       found = true;
       break;
     }
