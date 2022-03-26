@@ -188,7 +188,7 @@ pcn_dl_debug_vdprintf (int fd, int tag_p, char *str, size_t size,
 	      break;
 
 	    default:
-	      lio_error ("invalid format specifier");
+	      lio_error ("invalid format specifier\n");
 	    }
 	  ++fmt;
 	}

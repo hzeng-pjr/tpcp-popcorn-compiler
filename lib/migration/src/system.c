@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/auxv.h>
 #include <local_io.h>
+#include <popcorn.h>
 #include "system.h"
 
 /* FIXME: This is defined in glibc, or it should be.  */
@@ -137,9 +138,7 @@ load_lib (char *lib)
   unsigned long map, base;
   struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
 
-  lio_print ("loading ");
-  lio_print (lib);
-  lio_print (" ...\n");
+  lio_printf ("loading %s...", lib);
 
   for (i = 0; i < pcn_data->num_maps; i++)
     if (lio_strcmp (lib, pcn_data->maps[i].name) == 0)
@@ -149,7 +148,7 @@ load_lib (char *lib)
       }
 
   if (old_map == -1)
-    lio_error ("failed to detect previous mapping");
+    lio_error ("failed to detect previous mapping\n");
 
   fd = lio_open (lib, O_RDONLY, 0);
 
@@ -401,6 +400,22 @@ reset_dynamic (Elf64_Phdr *phdrs, int phnum, unsigned long entry, char *exec,
 }
 
 void
+get_pt_exec (int fd, Elf64_Phdr *phdrs, int phnum, void *interp)
+{
+  int i;
+
+  for (i = 0; i < phnum; i++)
+    {
+      if (phdrs[i].p_type != PT_INTERP)
+	continue;
+
+      lio_pread (fd, interp, phdrs[i].p_filesz, phdrs[i].p_offset);
+
+      return;
+    }
+}
+
+void
 print_all_dso ()
 {
   struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
@@ -484,4 +499,24 @@ main_function (int argc, char *argv[])
   //pcn_break ();
 
   return 0;
+}
+
+void
+reload_segment (Elf64_Phdr *phdr, int seg, int prot, int fd, char *name)
+{
+  void *paddr = (void *)phdr[seg].p_paddr;
+  int filesz = phdr[seg].p_filesz;
+  int offset = phdr[seg].p_offset;
+  
+  lio_printf ("loading %s %lx @ %u bytes\n", name, paddr, filesz);
+
+  lio_mprotect (paddr, filesz, (PROT_READ | PROT_WRITE));
+  lio_pread (fd, paddr, filesz, offset);
+  lio_mprotect (paddr, filesz, prot);  
+}
+
+void
+reload_dynamic (Elf64_Phdr *phdrs, int fd)
+{
+  reload_segment (phdrs, PCN_PT_DYNAMIC, PCN_PT_DYNAMIC_P, fd, ".dynamic");
 }
