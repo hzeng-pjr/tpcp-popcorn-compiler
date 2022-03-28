@@ -313,7 +313,7 @@ static void free_context(rewrite_context ctx)
   node = list_begin(fixup, &ctx->stack_pointers);
   while(node)
   {
-    ST_WARN("could not find stack pointer fixup for %lx (in activation %d)\n",
+    ST_WARN("could not find stack pointer fixup for %lx (in activation %u)\n",
             node->data.src_addr, node->data.act);
     node = list_remove(fixup, &ctx->stack_pointers, node);
   }
@@ -500,7 +500,7 @@ static bool rewrite_val(rewrite_context src, const live_value* val_src,
                                       dest, val_dest,
                                       fixup_node->data.src_addr)))
       {
-        ST_INFO("Found fixup for %lx (in frame %d)\n",
+        ST_INFO("Found fixup for %lx (in frame %u)\n",
                 fixup_node->data.src_addr, fixup_node->data.act);
 
         put_val_data(dest,
@@ -544,7 +544,7 @@ fixup_local_pointers(rewrite_context src, rewrite_context dest)
       // pointing to garbage data (e.g. uninitialized local values)
       if(fixup_node->data.act != src->act)
       {
-        ST_WARN("unresolved fixup for %lx (frame %d)\n",
+        ST_WARN("unresolved fixup for %lx (frame %u)\n",
                 fixup_node->data.src_addr, fixup_node->data.act);
         fixup_node = list_next(fixup, fixup_node);
         continue;

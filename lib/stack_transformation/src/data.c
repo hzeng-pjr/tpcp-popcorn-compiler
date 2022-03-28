@@ -158,7 +158,7 @@ void put_val_data(rewrite_context ctx,
     return;
   }
 
-  ST_INFO("Setting data in frame %d: ", act);
+  ST_INFO("Setting data in frame %u: ", act);
   dest_addr = get_dest_loc(ctx, val, act);
   if(val->type == SM_REGISTER && PROPS(ctx)->is_callee_saved(val->regnum))
     callee_addr = callee_saved_loc(ctx, val->regnum, act);
@@ -216,7 +216,7 @@ void* points_to_stack(const rewrite_context ctx,
       ST_ERR(1, "constant pool entries not supported\n");
       break;
     default:
-      ST_ERR(1, "invalid value type (%d)", val->type);
+      ST_ERR(1, "invalid value type (%u)", val->type);
       break;
     }
 
@@ -242,14 +242,14 @@ void* points_to_data(const rewrite_context src,
   ASSERT(src_val->type == SM_DIRECT && dest_val->type == SM_DIRECT,
          "invalid value types (must be allocas for pointed-to analysis)\n");
 
-  ST_INFO("Checking if %p points to: ", src_ptr);
+  ST_INFO("Checking if %lx points to: ", src_ptr);
   src_addr = get_val_loc(src, src_val->type,
                          src_val->regnum,
                          src_val->offset_or_constant,
                          src->act);
   if(src_addr <= src_ptr && src_ptr < (src_addr + src_val->alloca_size))
   {
-    ST_INFO("Reifying address of source value %p to: ", src_addr);
+    ST_INFO("Reifying address of source value %lx to: ", src_addr);
     dest_addr = get_val_loc(dest, dest_val->type,
                             dest_val->regnum,
                             dest_val->offset_or_constant,
@@ -331,7 +331,7 @@ static inline void* get_val_loc(rewrite_context ctx,
   case SM_INDIRECT: // Value is in register, but spilled to the stack
     val_loc = *(void**)REGOPS(ctx)->reg(ctx->acts[act].regs, regnum) +
               offset_or_constant;
-    ST_RAW_INFO("live value at stack address %p\n", val_loc);
+    ST_RAW_INFO("live value at stack address %lx\n", val_loc);
     break;
   case SM_CONSTANT: // Value is constant
   case SM_CONST_IDX: // Value is in constant pool
@@ -400,7 +400,7 @@ static void* callee_saved_loc(rewrite_context ctx,
     {
       saved_addr = get_register_save_loc(ctx, &ctx->acts[act], regnum);
       ASSERT(saved_addr, "invalid callee-saved slot\n");
-      ST_INFO("Saving callee-saved register %u at %lx (frame %d)\n",
+      ST_INFO("Saving callee-saved register %u at %lx (frame %u)\n",
               regnum, saved_addr, act);
       return saved_addr;
     }

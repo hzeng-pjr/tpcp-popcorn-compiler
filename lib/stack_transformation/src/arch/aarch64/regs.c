@@ -194,7 +194,7 @@ static uint16_t reg_size_aarch64(uint16_t reg)
   default: break;
   }
 
-  ST_ERR(1, "unknown/invalid register %d (aarch64)\n", reg);
+  ST_ERR(1, "unknown/invalid register %u (aarch64)\n", reg);
   return 0;
 }
 

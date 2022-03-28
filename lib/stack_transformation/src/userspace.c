@@ -349,7 +349,7 @@ static bool get_main_stack(stack_bounds* bounds)
   bounds->high = NULL;
   bounds->low = NULL;
 
-  if(snprintf(proc_fn, BUF_SIZE, "/proc/%d/maps", getpid()) < 0) return false;
+  if(snprintf(proc_fn, BUF_SIZE, "/proc/%u/maps", getpid()) < 0) return false;
   if(!(proc_fp = fopen(proc_fn, "r"))) return false;
   if(!(lineptr = (char*)MALLOC(BUF_SIZE * sizeof(char)))) return false;
   while(getline(&lineptr, &linesz, proc_fp) >= 0)
