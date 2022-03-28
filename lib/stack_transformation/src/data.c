@@ -358,7 +358,7 @@ static const void* get_src_loc(rewrite_context ctx,
                        val->offset_or_constant,
                        act);
   case SM_CONSTANT:
-    ST_RAW_INFO("constant live value: %d / %u / %x\n",
+    ST_RAW_INFO("constant live value: %u / %u / %x\n",
             val->offset_or_constant,
             val->offset_or_constant,
             val->offset_or_constant);
@@ -400,7 +400,7 @@ static void* callee_saved_loc(rewrite_context ctx,
     {
       saved_addr = get_register_save_loc(ctx, &ctx->acts[act], regnum);
       ASSERT(saved_addr, "invalid callee-saved slot\n");
-      ST_INFO("Saving callee-saved register %u at %p (frame %d)\n",
+      ST_INFO("Saving callee-saved register %u at %lx (frame %d)\n",
               regnum, saved_addr, act);
       return saved_addr;
     }
@@ -457,7 +457,7 @@ static void apply_arch_operation(rewrite_context ctx,
       }
       break;
     case SM_CONSTANT: /* Operand is int64_t */
-      ST_RAW_INFO("%s constant %ld / %lx\n",
+      ST_RAW_INFO("%s constant %lu / %lx\n",
                   inst_type_names[val->inst_type],
                   val->operand_offset_or_constant,
                   val->operand_offset_or_constant);
@@ -475,7 +475,7 @@ static void apply_arch_operation(rewrite_context ctx,
       case RightShiftArith: *recast = orig >> constant; break;
       case Mask: *recast = orig & constant; break;
       default:
-        ST_ERR(1, "Invalid instruction type (%d)\n", val->inst_type);
+        ST_ERR(1, "Invalid instruction type (%u)\n", val->inst_type);
         break;
       }
       break;
@@ -499,13 +499,13 @@ static void apply_arch_operation(rewrite_context ctx,
       stack_slot = *(void**)REGOPS(ctx)->reg(ACT(ctx).regs, val->operand_regnum) +
                    val->operand_offset_or_constant;
       memcpy(dest, stack_slot, val->operand_size);
-      ST_RAW_INFO("copy from stack slot @ %p\n", stack_slot);
+      ST_RAW_INFO("copy from stack slot @ %lx\n", stack_slot);
       break;
     case SM_INDIRECT:
       stack_slot = *(void**)REGOPS(ctx)->reg(ACT(ctx).regs, val->operand_regnum) +
                    val->operand_offset_or_constant;
       memcpy(dest, &stack_slot, val->operand_size);
-      ST_RAW_INFO("reference to stack slot @ %p\n", stack_slot);
+      ST_RAW_INFO("reference to stack slot @ %lx\n", stack_slot);
       break;
     case SM_CONSTANT:
       if(val->inst_type == Load64)
@@ -517,7 +517,7 @@ static void apply_arch_operation(rewrite_context ctx,
       else
       {
         memcpy(dest, &val->operand_offset_or_constant, val->operand_size);
-        ST_RAW_INFO("constant %ld / %lu / %lx\n",
+        ST_RAW_INFO("constant %lu / %lu / %lx\n",
                     val->operand_offset_or_constant,
                     val->operand_offset_or_constant,
                     val->operand_offset_or_constant);
