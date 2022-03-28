@@ -1050,7 +1050,6 @@ def install_libelf(base_path, install_path, target, num_threads):
                      'CFLAGS="{}"'.format(libelf_cflags),
                      'LDFLAGS="-static"',
                      './configure',
-                     '--build={}-popcorn-linux-gnu'.format(platform.machine()),
                      '--host={}-popcorn-linux-gnu'.format(target),
                      '--prefix={}'.format(target_install_path),
                      '--enable-compat',
@@ -1058,6 +1057,11 @@ def install_libelf(base_path, install_path, target, num_threads):
                      '--disable-shared',
                      '--disable-nls',
                      '--enable-extended-format'])
+
+
+    if (platform.machine() != target):
+        args += '--build={}-popcorn-linux-gnu'.format(platform.machine())
+
     run_cmd('configure libelf ({})'.format(target), args, use_shell=True)
 
     print('Making libelf ({})...'.format(target))
