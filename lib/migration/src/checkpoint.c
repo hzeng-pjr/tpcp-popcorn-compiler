@@ -187,9 +187,12 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 	lio_printf ("dst_arch = %u\n", dst_arch);
 
 	/* Populate phdrs.  */
-	fd = lio_open (pcn_data->argv[0], O_RDONLY, 0);
+	fd = lio_open (pcn_data->filename, O_RDONLY, 0);
 	if (fd < 0)
-		lio_error ("open failed");
+	{
+		lio_printf ("failed to open %s... ", pcn_data->filename);
+		lio_error ("terminating");
+	}
 
 	ret = lio_read (fd, &ehdr, sizeof (ehdr));
 	if (ret < 0)
