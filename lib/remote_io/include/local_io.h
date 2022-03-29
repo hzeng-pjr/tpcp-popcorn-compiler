@@ -64,4 +64,7 @@ extern void lio_print (char *str);
 extern void lio_error (char *str);
 extern void lio_assert (int cond, char *msg, char *file, int lineno);
 
+extern void *lio_malloc (size_t size);
+extern void lio_free (void *ptr);
+
 #endif

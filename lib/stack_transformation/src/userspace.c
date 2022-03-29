@@ -152,19 +152,19 @@ void __st_userspace_dtor(void)
   if(aarch64_handle)
   {
     st_destroy(aarch64_handle);
-    if(alloc_aarch64_fn) free(aarch64_fn);
+    if(alloc_aarch64_fn) lio_free(aarch64_fn);
   }
 
   if(powerpc64_handle)
   {
     st_destroy(powerpc64_handle);
-    if(alloc_powerpc64_fn) free(powerpc64_fn);
+    if(alloc_powerpc64_fn) lio_free(powerpc64_fn);
   }
 
   if(x86_64_handle)
   {
     st_destroy(x86_64_handle);
-    if(alloc_x86_64_fn) free(x86_64_fn);
+    if(alloc_x86_64_fn) lio_free(x86_64_fn);
   }
 }
 
@@ -364,7 +364,7 @@ static bool get_main_stack(stack_bounds* bounds)
       break;
     }
   }
-  free(lineptr);
+  lio_free(lineptr);
   fclose(proc_fp);
 
   ST_INFO("procfs stack limits: 0x%lx -> 0x%lx\n", bounds->low, bounds->high);

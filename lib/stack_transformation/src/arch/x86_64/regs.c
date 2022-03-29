@@ -88,7 +88,7 @@ static void* regset_init_x86_64(const void* regs)
 
 static void regset_free_x86_64(void* regset)
 {
-  free(regset);
+  lio_free(regset);
 }
 
 static void regset_clone_x86_64(const void* src, void* dest)

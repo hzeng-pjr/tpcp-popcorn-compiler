@@ -27,6 +27,6 @@ bitmap bitmap_init(size_t size)
 void bitmap_free(bitmap bitmap)
 {
   ASSERT(bitmap.bits, "invalid bitmap\n");
-  free(bitmap.bits);
+  lio_free(bitmap.bits);
 }
 

@@ -55,9 +55,9 @@
 /* Select either global or per-thread malloc implementation */
 //#define PER_NODE_MALLOC 1
 #ifdef PER_NODE_MALLOC
-# define MALLOC popcorn_malloc_cur
+# define MALLOC lio_malloc
 #else
-# define MALLOC malloc
+# define MALLOC lio_malloc
 #endif
 
 /*

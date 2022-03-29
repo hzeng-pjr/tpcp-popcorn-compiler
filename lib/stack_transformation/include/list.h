@@ -201,7 +201,7 @@ static inline node_t(type)* list_remove_##type(list_t(type)* list, \
     node->next->prev = node->prev; \
   } \
   ret = node->next; \
-  free(node); \
+  lio_free(node); \
   list->size--; \
   return ret; \
 }

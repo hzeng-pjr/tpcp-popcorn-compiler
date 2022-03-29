@@ -325,7 +325,7 @@ static void free_context(rewrite_context ctx)
 #endif
 #if _TLS_IMPL != COMPILER_TLS
   free_data_pools(ctx);
-  free(ctx);
+  lio_free(ctx);
 #endif
 
   TIMER_STOP(free_context);
@@ -336,8 +336,8 @@ static void free_context(rewrite_context ctx)
  */
 static void free_data_pools(rewrite_context ctx)
 {
-  free(ctx->regset_pool);
-  free(ctx->callee_saved_pool);
+  lio_free(ctx->regset_pool);
+  lio_free(ctx->callee_saved_pool);
 #ifdef _DEBUG
   ctx->regset_pool = NULL;
   ctx->callee_saved_pool = NULL;

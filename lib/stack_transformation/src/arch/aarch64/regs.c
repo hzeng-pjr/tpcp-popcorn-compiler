@@ -94,7 +94,7 @@ static void* regset_init_aarch64(const void* regs)
 
 static void regset_free_aarch64(void* regset)
 {
-  free(regset);
+  lio_free(regset);
 }
 
 static void regset_clone_aarch64(const void* src, void* dest)

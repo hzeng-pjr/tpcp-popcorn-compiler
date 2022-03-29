@@ -228,3 +228,24 @@ lio_spin ()
   while (lock)
     ;
 }
+
+/* This needs a proper malloc routine.  */
+void *
+lio_malloc (size_t size)
+{
+  void *mem = lio_mmap (NULL, size, PROT_READ | PROT_WRITE,
+			MAP_ANON | MAP_PRIVATE, -1, 0);
+
+  if (mem == NULL)
+    lio_error ("malloc failed\n");
+
+  //lio_printf ("allocated %u bytes @ %lx\n", size, mem);
+
+  return mem;
+}
+
+void
+lio_free (void *ptr)
+{
+  return;
+}
