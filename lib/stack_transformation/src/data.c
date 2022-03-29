@@ -164,8 +164,8 @@ void put_val_data(rewrite_context ctx,
     callee_addr = callee_saved_loc(ctx, val->regnum, act);
 
   ASSERT(dest_addr, "invalid destination location\n");
-  memcpy(dest_addr, &data, sizeof(uint64_t));
-  if(callee_addr) memcpy(callee_addr, &data, sizeof(data));
+  lio_memcpy(dest_addr, &data, sizeof(uint64_t));
+  if(callee_addr) lio_memcpy(callee_addr, &data, sizeof(data));
 
   TIMER_FG_STOP(put_val);
 }
@@ -491,32 +491,32 @@ static void apply_arch_operation(rewrite_context ctx,
     switch(val->operand_type)
     {
     case SM_REGISTER:
-      memcpy(dest, REGOPS(ctx)->reg(ACT(ctx).regs, val->operand_regnum),
+      lio_memcpy(dest, REGOPS(ctx)->reg(ACT(ctx).regs, val->operand_regnum),
              val->operand_size);
       ST_RAW_INFO("copy from register %u\n", val->operand_regnum);
       break;
     case SM_DIRECT:
       stack_slot = *(void**)REGOPS(ctx)->reg(ACT(ctx).regs, val->operand_regnum) +
                    val->operand_offset_or_constant;
-      memcpy(dest, stack_slot, val->operand_size);
+      lio_memcpy(dest, stack_slot, val->operand_size);
       ST_RAW_INFO("copy from stack slot @ %lx\n", stack_slot);
       break;
     case SM_INDIRECT:
       stack_slot = *(void**)REGOPS(ctx)->reg(ACT(ctx).regs, val->operand_regnum) +
                    val->operand_offset_or_constant;
-      memcpy(dest, &stack_slot, val->operand_size);
+      lio_memcpy(dest, &stack_slot, val->operand_size);
       ST_RAW_INFO("reference to stack slot @ %lx\n", stack_slot);
       break;
     case SM_CONSTANT:
       if(val->inst_type == Load64)
       {
-        memcpy(dest, (void *)val->operand_offset_or_constant, 8);
+        lio_memcpy(dest, (void *)val->operand_offset_or_constant, 8);
         ST_RAW_INFO("load from address 0x%lx\n",
                     val->operand_offset_or_constant);
       }
       else
       {
-        memcpy(dest, &val->operand_offset_or_constant, val->operand_size);
+        lio_memcpy(dest, &val->operand_offset_or_constant, val->operand_size);
         ST_RAW_INFO("constant %lu / %lu / %lx\n",
                     val->operand_offset_or_constant,
                     val->operand_offset_or_constant,
@@ -529,6 +529,6 @@ static void apply_arch_operation(rewrite_context ctx,
     }
   }
 
-  if(callee_dest) memcpy(callee_dest, dest, val->operand_size);
+  if(callee_dest) lio_memcpy(callee_dest, dest, val->operand_size);
 }
 
