@@ -232,7 +232,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 	lio_printf ("interpreter = %s\n", pcn_data->maps[0].name);
 
 	/* Reload any ISA-specific segments.  */
-	reload_dynamic (phdrs, fd);
+	reload_dynamic (phdrs, ehdr.e_phnum, fd);
 
 	entry = ehdr.e_entry;
 	restore_rw_segments (pcn_data->phdrs, pcn_data->phnum, entry);
@@ -244,7 +244,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 	pcn_data->pcn_entry = (unsigned long) &&pcn_cont;
 	ld_start = load_lib (pcn_data->maps[0].name); // Load ld-linux
 
-	lio_printf ("restoring %lu\n", lio_getpid ());
+	//lio_printf ("restoring %lu\n", lio_getpid ());
 
 	//lio_spin ();
 

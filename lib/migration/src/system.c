@@ -516,7 +516,11 @@ reload_segment (Elf64_Phdr *phdr, int seg, int prot, int fd, char *name)
 }
 
 void
-reload_dynamic (Elf64_Phdr *phdrs, int fd)
+reload_dynamic (Elf64_Phdr *phdrs, int phnum, int fd)
 {
-  reload_segment (phdrs, PCN_PT_DYNAMIC, PCN_PT_DYNAMIC_P, fd, ".dynamic");
+  int i;
+
+  for (i = 0; i < phnum; i++)
+    if (phdrs[i].p_type == PT_DYNAMIC)
+      reload_segment (phdrs, i-1, PCN_PT_DYNAMIC_P, fd, ".dynamic");
 }
