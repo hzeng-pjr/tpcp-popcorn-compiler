@@ -1,5 +1,5 @@
 diff --git a/Makeconfig b/Makeconfig
-index f252842979..1af6a571b8 100644
+index f252842979..3c30ee3bea 100644
 --- a/Makeconfig
 +++ b/Makeconfig
 @@ -358,7 +358,7 @@ real-static-start-installed-name = $(static-start-installed-name)
@@ -11,6 +11,15 @@ index f252842979..1af6a571b8 100644
  LDFLAGS.so += $(combreloc-LDFLAGS)
  LDFLAGS-rtld += $(combreloc-LDFLAGS)
  endif
+@@ -1272,7 +1272,7 @@ all-subdirs = csu assert ctype locale intl catgets math setjmp signal	    \
+ 	      grp pwd posix io termios resource misc socket sysvipc gmon    \
+ 	      gnulib iconv iconvdata wctype manual shadow gshadow po argp   \
+ 	      localedata timezone rt conform debug mathvec support	    \
+-	      dlfcn elf
++	      dlfcn elf remote_io
+ 
+ ifeq ($(build-crypt),yes)
+ all-subdirs += crypt
 diff --git a/Makerules b/Makerules
 index 1e9c18f0d8..eeb1854103 100644
 --- a/Makerules
@@ -46,7 +55,7 @@ index 43010c3443..509cdf13e2 100644
    }
  }
 diff --git a/csu/libc-start.c b/csu/libc-start.c
-index 12468c5a89..8be12a274e 100644
+index 12468c5a89..9d44b986c8 100644
 --- a/csu/libc-start.c
 +++ b/csu/libc-start.c
 @@ -122,6 +122,12 @@ STATIC int LIBC_START_MAIN (int (*main) (int, char **, char **
@@ -77,7 +86,7 @@ index 12468c5a89..8be12a274e 100644
 +#ifdef SHARED
 +      if (__libc_start_main_popcorn)
 +	result = __libc_start_main_popcorn (main, argc, argv, __environ MAIN_AUXVEC_PARAM);
-+      else	
++      else
 +	result = main (argc, argv, __environ MAIN_AUXVEC_PARAM);
 +#else
        result = main (argc, argv, __environ MAIN_AUXVEC_PARAM);
@@ -85,8 +94,816 @@ index 12468c5a89..8be12a274e 100644
      }
    else
      {
+diff --git a/elf/Makefile b/elf/Makefile
+index f9646f9c8c..a9f180ddb0 100644
+--- a/elf/Makefile
++++ b/elf/Makefile
+@@ -21,11 +21,11 @@ subdir		:= elf
+ 
+ include ../Makeconfig
+ 
+-headers		= elf.h bits/elfclass.h link.h bits/link.h
++headers		= elf.h bits/elfclass.h link.h bits/link.h popcorn.h
+ routines	= $(all-dl-routines) dl-support dl-iteratephdr \
+ 		  dl-addr dl-addr-obj enbl-secure dl-profstub \
+ 		  dl-origin dl-libc dl-sym dl-sysdep dl-error \
+-		  dl-reloc-static-pie
++		  dl-reloc-static-pie dl-remote-io
+ 
+ # The core dynamic linking functions are in libc for the static and
+ # profiled libraries.
+diff --git a/elf/Versions b/elf/Versions
+index 3b09901f6c..69b52af54a 100644
+--- a/elf/Versions
++++ b/elf/Versions
+@@ -30,6 +30,11 @@ libc {
+     # Internal error handling support.  Interposes the functions in ld.so.
+     _dl_signal_exception; _dl_catch_exception;
+     _dl_signal_error; _dl_catch_error;
++
++    # Popcorn Linux.
++    _dl_rio_print_dso;
++    _dl_rio_populate_dso_entries;
++    _dl_pcn_migration_entry;
+   }
+ }
+ 
+@@ -78,5 +83,10 @@ ld {
+ 
+     # Set value of a tunable.
+     __tunable_get_val;
++
++    # Popcorn Linux.
++    _dl_rio_print_dso;
++    _dl_rio_populate_dso_entries;
++    _dl_pcn_migration_entry;
+   }
+ }
+diff --git a/elf/dl-init.c b/elf/dl-init.c
+index 55d528c7a5..3b7ad2190f 100644
+--- a/elf/dl-init.c
++++ b/elf/dl-init.c
+@@ -18,6 +18,7 @@
+ 
+ #include <stddef.h>
+ #include <ldsodefs.h>
++#include "dl-popcorn.h"
+ 
+ 
+ /* Type of the initializer.  */
+@@ -80,6 +81,13 @@ _dl_init (struct link_map *main_map, int argc, char **argv, char **env)
+   ElfW(Dyn) *preinit_array = main_map->l_info[DT_PREINIT_ARRAY];
+   ElfW(Dyn) *preinit_array_size = main_map->l_info[DT_PREINIT_ARRAYSZ];
+   unsigned int i;
++  struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
++
++  argc = pcn_data->argc;
++  argv = pcn_data->argv;
++  env = pcn_data->envp;
++
++  //_dl_debug_printf ("%s: tp = %lx\n", __FUNCTION__, GET_TP);
+ 
+   if (__glibc_unlikely (GL(dl_initfirst) != NULL))
+     {
+diff --git a/elf/dl-lookup.c b/elf/dl-lookup.c
+index 378f28fa7d..72c7f3b583 100644
+--- a/elf/dl-lookup.c
++++ b/elf/dl-lookup.c
+@@ -965,6 +965,7 @@ _dl_setup_hash (struct link_map *map)
+     {
+       Elf32_Word *hash32
+ 	= (void *) D_PTR (map, l_info[ELF_MACHINE_GNU_HASH_ADDRIDX]);
++      // _dl_debug_printf ("%s: hash32 = %lx, ", __FUNCTION__, hash32);
+       map->l_nbuckets = *hash32++;
+       Elf32_Word symbias = *hash32++;
+       Elf32_Word bitmask_nwords = *hash32++;
+diff --git a/elf/dl-map-segments.h b/elf/dl-map-segments.h
+index ac9f09ab4c..86bd3a15dd 100644
+--- a/elf/dl-map-segments.h
++++ b/elf/dl-map-segments.h
+@@ -17,6 +17,7 @@
+    <https://www.gnu.org/licenses/>.  */
+ 
+ #include <dl-load.h>
++#include "dl-popcorn.h"
+ 
+ /* This implementation assumes (as does the corresponding implementation
+    of _dl_unmap_segments, in dl-unmap-segments.h) that shared objects
+@@ -33,6 +34,9 @@ _dl_map_segments (struct link_map *l, int fd,
+                   struct link_map *loader)
+ {
+   const struct loadcmd *c = loadcmds;
++  struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
++  unsigned int flags = MAP_COPY | MAP_FILE;
++  int i;
+ 
+   if (__glibc_likely (type == ET_DYN))
+     {
+@@ -52,10 +56,25 @@ _dl_map_segments (struct link_map *l, int fd,
+                                   c->mapstart & GLRO(dl_use_load_bias))
+            - MAP_BASE_ADDR (l));
+ 
++      if (pcn_data->num_maps > 0)
++	{
++	  for (i = 0; i < pcn_data->num_maps; i++)
++	    if (strcmp (l->l_name, pcn_data->maps[i].name) == 0) {
++	      mappref = pcn_data->maps[i].start;
++	      flags = MAP_PRIVATE | MAP_FIXED;
++//	      _dl_debug_printf ("previous mapping for %s found at %x\n",
++//				l->l_name, mappref);
++	    }
++	}
++
++//      _dl_debug_printf ("mmap (%x, %u, %u, %u, %u, %u)\n",
++//			mappref, maplength, c->prot, flags, fd,
++//			c->mapoff);
++
+       /* Remember which part of the address space this object uses.  */
+-      l->l_map_start = (ElfW(Addr)) __mmap ((void *) mappref, maplength,
++      l->l_map_start = (ElfW(Addr)) do_mmap ((void *) mappref, maplength,
+                                             c->prot,
+-                                            MAP_COPY|MAP_FILE,
++                                            flags,
+                                             fd, c->mapoff);
+       if (__glibc_unlikely ((void *) l->l_map_start == MAP_FAILED))
+         return DL_MAP_SEGMENTS_ERROR_MAP_SEGMENT;
+diff --git a/elf/dl-minimal.c b/elf/dl-minimal.c
+index 42192f8a7b..b65ed6c47b 100644
+--- a/elf/dl-minimal.c
++++ b/elf/dl-minimal.c
+@@ -67,6 +67,7 @@ malloc (size_t n)
+ 	 page to reduce number of mmap calls.  */
+       caddr_t page;
+       size_t nup = (n + GLRO(dl_pagesize) - 1) & ~(GLRO(dl_pagesize) - 1);
++      struct link_map *l = &GL (dl_rtld_map);
+       if (__glibc_unlikely (nup == 0 && n != 0))
+ 	return NULL;
+       nup += GLRO(dl_pagesize);
+@@ -77,6 +78,8 @@ malloc (size_t n)
+       if (page != alloc_end)
+ 	alloc_ptr = page;
+       alloc_end = page + nup;
++      l->l_alloc_ptr = page;
++      l->l_alloc_end = nup;
+     }
+ 
+   alloc_last_block = (void *) alloc_ptr;
+diff --git a/elf/dl-misc.c b/elf/dl-misc.c
+index e6cf247b46..328e140141 100644
+--- a/elf/dl-misc.c
++++ b/elf/dl-misc.c
+@@ -35,6 +35,10 @@
+ #include <dl-writev.h>
+ #include <not-cancel.h>
+ 
++#if defined(__x86_64__) || defined(__aarch64__)
++#define NEED_L
++#endif
++
+ /* Read the whole contents of FILE into new mmap'd space with given
+    protections.  *SIZEP gets the size of the file.  On error MAP_FAILED
+    is returned.  */
+@@ -127,7 +131,7 @@ _dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
+ 	  char fill = ' ';
+ 	  int width = -1;
+ 	  int prec = -1;
+-#if LONG_MAX != INT_MAX
++#ifdef NEED_L
+ 	  int long_mod = 0;
+ #endif
+ 
+@@ -158,7 +162,7 @@ _dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
+ 	     can use the same code for size_t.  */
+ 	  if (*fmt == 'l' || *fmt == 'Z')
+ 	    {
+-#if LONG_MAX != INT_MAX
++#ifdef NEED_L
+ 	      long_mod = 1;
+ #endif
+ 	      ++fmt;
+@@ -172,7 +176,7 @@ _dl_debug_vdprintf (int fd, int tag_p, const char *fmt, va_list arg)
+ 	      {
+ 		/* We have to make a difference if long and int have a
+ 		   different size.  */
+-#if LONG_MAX != INT_MAX
++#ifdef NEED_L
+ 		unsigned long int num = (long_mod
+ 					 ? va_arg (arg, unsigned long int)
+ 					 : va_arg (arg, unsigned int));
+diff --git a/elf/dl-popcorn.h b/elf/dl-popcorn.h
+new file mode 100644
+index 0000000000..7765dc06e8
+--- /dev/null
++++ b/elf/dl-popcorn.h
+@@ -0,0 +1,57 @@
++#ifndef DL_POPCORN_H
++#define DL_POPCORN_H
++
++#include "popcorn.h"
++
++static inline void pcn_break (void)
++{
++  struct dl_pcn_data *data = (void *) DL_PCN_STATE;
++
++#ifdef __x86_64__
++  if (data->pcn_break)
++    asm volatile ("int3;");
++#else
++  if (data->pcn_break)
++    ;
++#endif
++}
++
++static void *do_mmap(void *addr, size_t length, int prot, int flags,
++	      int fd, off_t offset)
++{
++#if defined (__x86_64__)
++
++  /* linux/arch/x86/entry/syscalls/syscall_64.tbl  */
++  unsigned long ret;
++  int SYS_mmap = 9;
++  __asm__ __volatile__ ("syscall" : "=a"(ret)
++			: "a"(SYS_mmap), "D"(addr), "S"(length), "d"(prot),
++			  "r"(flags), "r"(fd), "r"(offset)
++			: "rcx", "r11", "memory");
++  return ret;
++
++#elif defined (__aarch64__)
++
++  int SYS_mmap = 222;
++  register long x8 __asm__("x8") = SYS_mmap;
++  register long x0 __asm__("x0") = (long) addr;
++  register long x1 __asm__("x1") = length;
++  register long x2 __asm__("x2") = prot;
++  register long x3 __asm__("x3") = flags;
++  register long x4 __asm__("x4") = fd;
++  register long x5 __asm__("x5") = offset;
++
++  __asm__ __volatile__ ( "svc 0"
++			 : "=r"(x0)
++			 : "r"(x8), "0"(x0), "r"(x1), "r"(x2), "r"(x3),
++			   "r"(x4), "r"(x5)
++			 : "memory", "cc");
++
++  return (void *)x0;
++
++#else
++#error "unsupported architecture"
++#endif
++}
++
++#endif
+diff --git a/elf/dl-remote-io.c b/elf/dl-remote-io.c
+new file mode 100644
+index 0000000000..e52e13c81d
+--- /dev/null
++++ b/elf/dl-remote-io.c
+@@ -0,0 +1,133 @@
++/* Run time dynamic linker interface with the remote_io subsystem.  */
++
++#include <ldsodefs.h>
++#include <link.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include "dl-popcorn.h"
++
++#include <nptl/descr.h>
++#include <tls.h>
++
++#define PAGE_SIZE 0x1000
++
++unsigned long _dl_pcn_stack_init;
++unsigned long _dl_pcn_migration_entry __attribute__ ((weak));
++
++static unsigned long
++round_down (unsigned long a, unsigned long b)
++{
++  return a / b * b;
++}
++
++static unsigned long
++round_up (unsigned long a, unsigned long b)
++{
++  return (a + b - 1) / b * b;
++}
++
++struct link_map *
++dl_rio_get_rtld_global ()
++{
++  /* The rtld_global object is defined in rtld.c. But it is accessible
++     by the GL macros defined in <sysdeps/generic/ldsodefs.h>.  */
++
++  return &GL (dl_rtld_map);
++}
++
++static void
++dump_file (struct link_map *map)
++{
++  unsigned long start, size;
++  int i;
++  ElfW(Phdr) *phdr = map->l_phdr;
++
++  printf ("%s (%lx-%lx)\n", map->l_name, map->l_map_start, map->l_map_end);
++
++  for (i = 0; i < map->l_phnum; i++)
++    {
++      if (map->l_phdr[i].p_type != PT_LOAD)
++	continue;
++
++      start = round_down (map->l_phdr[i].p_vaddr + map->l_addr, PAGE_SIZE);
++      size = map->l_phdr[i].p_memsz;
++      printf ("  %lx -> %lx\n", start, start+size);
++    }
++}
++
++void
++_dl_rio_print_dso ()
++{
++  struct link_map *l;
++
++  for (l = &GL (dl_rtld_map); l != NULL; l = l->l_prev)
++    {
++      if (l->l_name[0] == '\0')
++	continue;
++      if (strcmp (l->l_name, "linux-vdso.so.1") == 0)
++	continue;
++
++      dump_file (l);
++    }
++}
++
++static int
++count_map_entries (struct link_map *map)
++{
++  int cnt = 0;
++  int i;
++
++  for (; map; map = map->l_prev)
++    {
++      if (map->l_name[0] == '\0')
++	continue;
++      if (strcmp (map->l_name, "linux-vdso.so.1") == 0)
++	continue;
++      cnt++;
++    }
++
++  return cnt;
++}
++
++void
++_dl_rio_populate_dso_entries ()
++{
++  struct link_map *l = &GL (dl_rtld_map), *map;
++  struct mmap_entries *me;
++  int i, j, cnt;
++  unsigned long start, size;
++  struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
++
++  //printf ("sizeof (struct pthread) = %u\n", sizeof (struct pthread));
++  //printf ("sizeof (tcbhead_t) = %u\n", sizeof (tcbhead_t));
++
++  if (pcn_data->num_maps != 0)
++    {
++      for (i = 0; i < pcn_data->num_maps; i++)
++	free (pcn_data->maps[i].name);
++    }
++
++  cnt = count_map_entries (l);
++
++  for (map = l, j = 0; map; map = map->l_prev)
++    {
++      if (map->l_name[0] == '\0')
++	continue;
++      if (strcmp (map->l_name, "linux-vdso.so.1") == 0)
++	continue;
++
++      pcn_data->maps[j].name = strdup (map->l_name);
++      pcn_data->maps[j].start = map->l_map_start;
++      pcn_data->maps[j].size = map->l_map_end - map->l_map_start;
++
++      j++;
++    }
++
++  pcn_data->maps[j].name = strdup ("dl-malloc");
++  pcn_data->maps[j].start = l->l_alloc_ptr;
++  pcn_data->maps[j].size = l->l_alloc_end;
++  j++;
++
++  pcn_data->num_maps = j;
++}
+diff --git a/elf/dl-sysdep.c b/elf/dl-sysdep.c
+index 854570821c..3293b45bc2 100644
+--- a/elf/dl-sysdep.c
++++ b/elf/dl-sysdep.c
+@@ -47,6 +47,8 @@
+ #include <dl-tunables.h>
+ #include <dl-auxv.h>
+ 
++#include "popcorn.h"
++
+ extern char **_environ attribute_hidden;
+ extern char _end[] attribute_hidden;
+ 
+@@ -117,14 +119,22 @@ _dl_sysdep_start (void **start_argptr,
+   user_entry = (ElfW(Addr)) ENTRY_POINT;
+   GLRO(dl_platform) = NULL; /* Default to nothing known about the platform.  */
+ 
++  struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
++
+   for (av = GLRO(dl_auxv); av->a_type != AT_NULL; set_seen (av++))
+     switch (av->a_type)
+       {
+       case AT_PHDR:
+-	phdr = (void *) av->a_un.a_val;
++	if (pcn_data->phdrs)
++	  phdr = pcn_data->phdrs;
++	else
++	  phdr = (void *) av->a_un.a_val;
+ 	break;
+       case AT_PHNUM:
+-	phnum = av->a_un.a_val;
++	if (pcn_data->phdrs)
++	  phnum = pcn_data->phnum;
++	else
++	  phnum = av->a_un.a_val;
+ 	break;
+       case AT_PAGESZ:
+ 	GLRO(dl_pagesize) = av->a_un.a_val;
+diff --git a/elf/dl-tls.c b/elf/dl-tls.c
+index fa03234610..e996082419 100644
+--- a/elf/dl-tls.c
++++ b/elf/dl-tls.c
+@@ -28,6 +28,11 @@
+ #include <tls.h>
+ #include <dl-tls.h>
+ #include <ldsodefs.h>
++#include "dl-popcorn.h"
++
++#ifndef TLS_TCB_PCN_PAD
++#define TLS_TCB_PCN_PAD 0x0
++#endif
+ 
+ /* Amount of excess space to allocate in the static TLS area
+    to allow dynamic loading of modules defining IE-model TLS data.  */
+@@ -222,7 +227,7 @@ _dl_determine_tlsoffset (void)
+ 			    + TLS_TCB_SIZE);
+ #elif TLS_DTV_AT_TP
+   /* The TLS blocks start right after the TCB.  */
+-  size_t offset = TLS_TCB_SIZE;
++  size_t offset = TLS_TCB_SIZE + TLS_TCB_PCN_PAD;
+ 
+   for (size_t cnt = 0; slotinfo[cnt].map != NULL; ++cnt)
+     {
+@@ -298,6 +303,9 @@ allocate_dtv (void *result)
+   else
+     result = NULL;
+ 
++//  _dl_debug_printf ("%s: dtv = %lx @ %u bytes, tcbp = %lx\n", __FUNCTION__, dtv,
++//		    dtv_length + 2 * sizeof (dtv_t), result);
++
+   return result;
+ }
+ 
+@@ -327,23 +335,53 @@ tcb_to_pointer_to_free_location (void *tcb)
+   return original_pointer_location;
+ }
+ 
++/* This function needs to consider multiple threads eventually.  */
++static void
++*pcn_alloc_static_tls (size_t size)
++{
++  struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
++  void *data;
++
++  if (pcn_data->tls_static_block != NULL)
++    return pcn_data->tls_static_block;
++
++  size += PCN_PAGE_SIZE - 1;
++  size &= ~(PCN_PAGE_SIZE - 1);
++
++  data = do_mmap ((void *)DL_PCN_STATE + pcn_data->pcn_data_size, size,
++		  PROT_READ | PROT_WRITE,
++		  MAP_PRIVATE | MAP_FIXED_NOREPLACE | MAP_ANONYMOUS, 0, 0);
++  pcn_data->tls_static_block = data;
++  pcn_data->pcn_data_size += size;
++  pcn_data->tls_init = -1;
++
++//  _dl_debug_printf ("%s: allocated %u bytes of TLS @ %lx\n", __FUNCTION__,
++//		    size, data);
++
++  return data;
++}
++
+ void *
+ _dl_allocate_tls_storage (void)
+ {
+   void *result;
+   size_t size = GL(dl_tls_static_size);
++  struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
++
++//  _dl_debug_printf ("%s: allocating static TLS block\n", __FUNCTION__);
+ 
+ #if TLS_DTV_AT_TP
+   /* Memory layout is:
+      [ TLS_PRE_TCB_SIZE ] [ TLS_TCB_SIZE ] [ TLS blocks ]
+ 			  ^ This should be returned.  */
+-  size += TLS_PRE_TCB_SIZE;
++  size += TLS_PRE_TCB_SIZE + TLS_TCB_PCN_PAD;
+ #endif
+ 
+   /* Perform the allocation.  Reserve space for the required alignment
+      and the pointer to the original allocation.  */
+   size_t alignment = GL(dl_tls_static_align);
+-  void *allocated = malloc (size + alignment + sizeof (void *));
++  ///void *allocated = malloc (size + alignment + sizeof (void *));
++  void *allocated = pcn_alloc_static_tls (size + alignment + sizeof (void *));
+   if (__glibc_unlikely (allocated == NULL))
+     return NULL;
+ 
+@@ -371,7 +409,12 @@ _dl_allocate_tls_storage (void)
+   /* Clear the TCB data structure and TLS_PRE_TCB_SIZE bytes before
+      it.  We can't ask the caller (i.e. libpthread) to do it, because
+      we will initialize the DTV et al.  */
+-  memset (result - TLS_PRE_TCB_SIZE, '\0', TLS_PRE_TCB_SIZE + TLS_TCB_SIZE);
++  if (pcn_data->tls_init < 0)
++    {
++      //_dl_debug_printf ("%s: initializing static TLS block\n", __FUNCTION__);
++      memset (result - TLS_PRE_TCB_SIZE, '\0', TLS_PRE_TCB_SIZE + TLS_TCB_SIZE);
++      pcn_data->tls_init = 0;
++    }
+ #endif
+ 
+   /* Record the value of the original pointer for later
+@@ -443,6 +486,7 @@ _dl_allocate_tls_init (void *result)
+   struct dtv_slotinfo_list *listp;
+   size_t total = 0;
+   size_t maxgen = 0;
++  struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
+ 
+   /* Check if the current dtv is big enough.   */
+   if (dtv[-1].counter < GL(dl_tls_max_dtv_idx))
+@@ -504,6 +548,25 @@ _dl_allocate_tls_init (void *result)
+ 	  dtv[map->l_tls_modid].pointer.val = dest;
+ 
+ 	  /* Copy the initialization image and clear the BSS part.  */
++
++//	  _dl_debug_printf ("%s: reserving tls for %s\n", __FUNCTION__,
++//			    map->l_name);
++
++	  /* Don't reinitialize TLS data for the main executable after
++	     reloading ld-linux.  */
++	  if (map->l_name[0] == '\0' && pcn_data->tls_init == 0)
++	    {
++//	      _dl_debug_printf ("%s: initializing TLS module 1\n",
++//				__FUNCTION__);
++	      pcn_data->tls_init = 1;
++	    }
++	  else if (map->l_name[0] == '\0' && pcn_data->tls_init > 0)
++	    {
++//	      _dl_debug_printf ("%s: skipping TLS module 1\n",
++//				__FUNCTION__);
++	      continue;
++	    }
++
+ 	  memset (__mempcpy (dest, map->l_tls_initimage,
+ 			     map->l_tls_initimage_size), '\0',
+ 		  map->l_tls_blocksize - map->l_tls_initimage_size);
+diff --git a/elf/get-dynamic-info.h b/elf/get-dynamic-info.h
+index 4f6a86ef37..92451da488 100644
+--- a/elf/get-dynamic-info.h
++++ b/elf/get-dynamic-info.h
+@@ -44,6 +44,7 @@ elf_get_dynamic_info (struct link_map *l, ElfW(Dyn) *temp)
+ #endif
+ 
+   info = l->l_info;
++  //_dl_debug_printf ("%s: dyn = %lx\n", __FUNCTION__, dyn);
+ 
+   while (dyn->d_tag != DT_NULL)
+     {
+diff --git a/elf/popcorn.h b/elf/popcorn.h
+new file mode 100644
+index 0000000000..445a0cdc8f
+--- /dev/null
++++ b/elf/popcorn.h
+@@ -0,0 +1,35 @@
++#ifndef POPCORN_H
++#define POPCORN_H
++
++#define DL_PCN_STATE 0x700000000000
++#define PCN_PAGE_SIZE 0x1000
++#define PCN_HETEROGENEOUS 1
++#define PCN_FILENAME 64
++
++struct mmap_entries {
++  char *name;
++  unsigned long start, size;
++};
++
++struct dl_pcn_data {
++  unsigned long pcn_entry;
++  int pcn_break;
++  void *arg;
++  int argc;
++  char **argv;
++  char **envp;
++  char filename[64];
++  void *thread_pointer;
++  void *tls_static_block;
++  int tls_init;
++  void *phdrs;
++  int phnum;
++  int pcn_data_size;
++  int num_maps;
++  struct mmap_entries maps[];
++};
++
++extern void _dl_rio_print_dso ();
++extern void _dl_rio_populate_dso_entries ();
++
++#endif
+diff --git a/elf/rtld.c b/elf/rtld.c
+index 553cfbd1b7..6dc5dba428 100644
+--- a/elf/rtld.c
++++ b/elf/rtld.c
+@@ -45,6 +45,7 @@
+ #include <stap-probe.h>
+ #include <stackinfo.h>
+ #include <not-cancel.h>
++#include "dl-popcorn.h"
+ 
+ #include <assert.h>
+ 
+@@ -468,6 +469,8 @@ _dl_start (void *arg)
+ # define bootstrap_map info.l
+ #endif
+ 
++  struct dl_pcn_data *pcn_data;
++
+   /* This #define produces dynamic linking inline functions for
+      bootstrap relocation instead of general-purpose relocation.
+      Since ld.so must not have any undefined symbols the result
+@@ -500,8 +503,26 @@ _dl_start (void *arg)
+ # endif
+ #endif
+ 
++  pcn_data = do_mmap ((void *)DL_PCN_STATE, PCN_PAGE_SIZE,
++		      PROT_READ | PROT_WRITE,
++		      MAP_PRIVATE | MAP_FIXED_NOREPLACE | MAP_ANONYMOUS, 0, 0);
++
++  if (pcn_data == MAP_FAILED || pcn_data == (void *) -EEXIST)
++    pcn_data = (void *) DL_PCN_STATE;
++
++  if (pcn_data->arg == NULL)
++    {
++      pcn_data->arg = arg;
++      pcn_data->pcn_data_size = PCN_PAGE_SIZE;
++    }
++  else
++    arg = pcn_data->arg;
++
++  //pcn_break ();
++
+   /* Figure out the run-time load address of the dynamic linker itself.  */
+   bootstrap_map.l_addr = elf_machine_load_address ();
++  //_dl_debug_printf ("bootstrap_map.l_addr = %lx\n", bootstrap_map.l_addr);
+ 
+   /* Read our own dynamic section and fill in the info array.  */
+   bootstrap_map.l_ld = (void *) bootstrap_map.l_addr + elf_machine_dynamic ();
+@@ -697,6 +718,8 @@ static bool tls_init_tp_called;
+ static void *
+ init_tls (void)
+ {
++  struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
++
+   /* Number of elements in the static TLS block.  */
+   GL(dl_tls_static_nelem) = GL(dl_tls_max_dtv_idx);
+ 
+@@ -717,6 +740,11 @@ init_tls (void)
+   /* No need to check the return value.  If memory allocation failed
+      the program would have been terminated.  */
+ 
++//  _dl_debug_printf ("%s: dl_tls_dtv_slotinfo_list = %lx @ %u bytes\n",
++//		    __FUNCTION__, GL(dl_tls_dtv_slotinfo_list),
++//		    sizeof (struct dtv_slotinfo_list)
++//		    + nelem * sizeof (struct dtv_slotinfo));
++
+   struct dtv_slotinfo *slotinfo = GL(dl_tls_dtv_slotinfo_list)->slotinfo;
+   GL(dl_tls_dtv_slotinfo_list)->len = nelem;
+   GL(dl_tls_dtv_slotinfo_list)->next = NULL;
+@@ -760,6 +788,13 @@ cannot allocate TLS data structures for initial thread\n");
+     _dl_fatal_printf ("cannot set up thread-local storage: %s\n", lossage);
+   tls_init_tp_called = true;
+ 
++  pcn_data->thread_pointer = tcbp;
++
++//  _dl_debug_printf ("%s: tcbp = %lx (%lx), DTV = %lx, TP = %lx\n",
++//		    __FUNCTION__, tcbp, THREAD_DTV(), GET_DTV (tcbp), GET_TP);
++//  _dl_debug_printf ("%s: SINGLE_THREAD_P = %u\n", __FUNCTION__,
++//		    SINGLE_THREAD_P);
++
+   return tcbp;
+ }
+ 
+@@ -1098,6 +1133,7 @@ dl_main (const ElfW(Phdr) *phdr,
+   bool prelinked = false;
+   bool rtld_is_main = false;
+   void *tcbp = NULL;
++  struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
+ 
+   GL(dl_init_static_tls) = &_dl_nothread_init_static_tls;
+ 
+@@ -1119,6 +1155,17 @@ dl_main (const ElfW(Phdr) *phdr,
+   _dl_starting_up = 1;
+ #endif
+ 
++  if (pcn_data->pcn_entry)
++    *user_entry = pcn_data->pcn_entry;
++
++  /*
++  _dl_debug_printf ("phdr = 0x%x, phnum = %u, user_entry = 0x%x, auxv = 0x%x\n",
++		    phdr, phnum, *user_entry, auxv);
++  _dl_debug_printf ("pcn_data: arg = 0x%x, entry = 0x%x, break = %u\n",
++		    pcn_data->arg, pcn_data->pcn_entry,
++		    pcn_data->pcn_break);
++  */
++
+   if (*user_entry == (ElfW(Addr)) ENTRY_POINT)
+     {
+       /* Ho ho.  We are not the program interpreter!  We are the program
+@@ -1503,7 +1550,7 @@ ERROR: '%s': cannot process note segment.\n", _dl_argv[0]);
+ 		      + GL(dl_rtld_map).l_info[DT_SONAME]->d_un.d_ptr);
+       newname.next = NULL;
+       newname.dont_free = 1;
+-
++      //_dl_debug_printf ("%s: newname = %s\n", __FUNCTION__, newname.name);
+       assert (GL(dl_rtld_map).l_libname->next == NULL);
+       GL(dl_rtld_map).l_libname->next = &newname;
+     }
+@@ -1538,10 +1585,10 @@ ERROR: '%s': cannot process note segment.\n", _dl_argv[0]);
+   struct link_map **first_preload = &GL(dl_rtld_map).l_next;
+   /* Set up the data structures for the system-supplied DSO early,
+      so they can influence _dl_init_paths.  */
+-  setup_vdso (main_map, &first_preload);
++  //setup_vdso (main_map, &first_preload);
+ 
+   /* With vDSO setup we can initialize the function pointers.  */
+-  setup_vdso_pointers ();
++  //setup_vdso_pointers ();
+ 
+ #ifdef DL_SYSDEP_OSCHECK
+   DL_SYSDEP_OSCHECK (_dl_fatal_printf);
+@@ -2244,6 +2291,7 @@ ERROR: '%s': cannot process note segment.\n", _dl_argv[0]);
+       unsigned i = main_map->l_searchlist.r_nlist;
+       while (i-- > 0)
+ 	{
++	  struct link_map volatile *t = main_map;
+ 	  struct link_map *l = main_map->l_initfini[i];
+ 
+ 	  /* While we are at it, help the memory handling a bit.  We have to
+@@ -2360,6 +2408,26 @@ ERROR: '%s': cannot process note segment.\n", _dl_argv[0]);
+   _dl_unload_cache ();
+ #endif
+ 
++  if (pcn_data->argv == NULL)
++    {
++      int len = strlen (_dl_argv[0]) + 1;
++
++      pcn_data->argc = _dl_argc;
++      pcn_data->argv = _dl_argv;
++      pcn_data->envp = environ;
++
++      assert (len < PCN_FILENAME);
++
++      memcpy (pcn_data->filename, _dl_argv[0], len);
++    }
++
++//  {
++//    void *tp = GET_TP;
++//    void *self = THREAD_SELF;
++//    _dl_debug_printf ("%s: tp = %lx, thread_self = %lx, sizeof (pthread) = %u\n",
++//		      __FUNCTION__, tp, self, sizeof (struct pthread));
++//  }
++
+   /* Once we return, _dl_sysdep_start will invoke
+      the DT_INIT functions and then *USER_ENTRY.  */
+ }
+diff --git a/include/link.h b/include/link.h
+index aea268439c..6391d9af8e 100644
+--- a/include/link.h
++++ b/include/link.h
+@@ -245,6 +245,9 @@ struct link_map
+     /* End of the executable part of the mapping.  */
+     ElfW(Addr) l_text_end;
+ 
++    /* Keep track of mmap allocations.  */
++    ElfW(Addr) l_alloc_ptr, l_alloc_end;
++
+     /* Default array for 'l_scope'.  */
+     struct r_scope_elem *l_scope_mem[4];
+     /* Size of array allocated for 'l_scope'.  */
 diff --git a/nptl/Makefile b/nptl/Makefile
-index 584e0ffd96..580b86a400 100644
+index 2df4c9098c..35f165c085 100644
 --- a/nptl/Makefile
 +++ b/nptl/Makefile
 @@ -146,7 +146,8 @@ libpthread-routines = nptl-init nptlfreeres vars events version pt-interp \
@@ -195,10 +1012,111 @@ index 0000000000..21af9f8a67
 +#endif
 +}
 diff --git a/nptl/descr.h b/nptl/descr.h
-index 9dcf480bdf..f23355e0cd 100644
+index 5f1f35e9a4..fe8115a24a 100644
 --- a/nptl/descr.h
 +++ b/nptl/descr.h
-@@ -394,6 +394,9 @@ struct pthread
+@@ -54,7 +54,44 @@
+   ((PTHREAD_KEYS_MAX + PTHREAD_KEY_2NDLEVEL_SIZE - 1) \
+    / PTHREAD_KEY_2NDLEVEL_SIZE)
+ 
++/* Replacement type for __m128 since this file is included by ld.so,
++   which is compiled with -mno-sse.  It must not change the alignment
++   of rtld_savespace_sse.  */
++typedef struct
++{
++  int i[4];
++} __128bits;
+ 
++/* x86_64 tcbhead */
++typedef struct
++{
++  void *tcb;		/* Pointer to the TCB.  Not necessarily the
++			   thread descriptor used by libpthread.  */
++  dtv_t *dtv;
++  void *self;		/* Pointer to the thread descriptor.  */
++  int multiple_threads;
++  int gscope_flag;
++  uintptr_t sysinfo;
++  uintptr_t stack_guard;
++  uintptr_t pointer_guard;
++  unsigned long int vgetcpu_cache[2];
++  /* Bit 0: X86_FEATURE_1_IBT.
++     Bit 1: X86_FEATURE_1_SHSTK.
++   */
++  unsigned int feature_1;
++  int __glibc_unused1;
++  /* Reservation of some values for the TM ABI.  */
++  void *__private_tm[4];
++  /* GCC split stack support.  */
++  void *__private_ss;
++  /* The lowest address of shadow stack,  */
++  unsigned long long int ssp_base;
++  /* Must be kept even if it is no longer used by glibc since programs,
++     like AddressSanitizer, depend on the size of tcbhead_t.  */
++  __128bits __glibc_unused2[8][4] __attribute__ ((aligned (32)));
++
++  void *__padding[8];
++} x86_64_tcbhead_t;
+ 
+ 
+ /* Internal version of the buffer to store cancellation handler
+@@ -126,40 +163,8 @@ struct priority_protection_data
+ /* Thread descriptor data structure.  */
+ struct pthread
+ {
+-  union
+-  {
+-#if !TLS_DTV_AT_TP
+-    /* This overlaps the TCB as used for TLS without threads (see tls.h).  */
+-    tcbhead_t header;
+-#else
+-    struct
+-    {
+-      /* multiple_threads is enabled either when the process has spawned at
+-	 least one thread or when a single-threaded process cancels itself.
+-	 This enables additional code to introduce locking before doing some
+-	 compare_and_exchange operations and also enable cancellation points.
+-	 The concepts of multiple threads and cancellation points ideally
+-	 should be separate, since it is not necessary for multiple threads to
+-	 have been created for cancellation points to be enabled, as is the
+-	 case is when single-threaded process cancels itself.
+-
+-	 Since enabling multiple_threads enables additional code in
+-	 cancellation points and compare_and_exchange operations, there is a
+-	 potential for an unneeded performance hit when it is enabled in a
+-	 single-threaded, self-canceling process.  This is OK though, since a
+-	 single-threaded process will enable async cancellation only when it
+-	 looks to cancel itself and is hence going to end anyway.  */
+-      int multiple_threads;
+-      int gscope_flag;
+-    } header;
+-#endif
+-
+-    /* This extra padding has no special purpose, and this structure layout
+-       is private and subject to change without affecting the official ABI.
+-       We just have it here in case it might be convenient for some
+-       implementation-specific instrumentation hack or suchlike.  */
+-    void *__padding[24];
+-  };
++  /* Least common denominator for a header.  */
++  x86_64_tcbhead_t header;
+ 
+   /* This descriptor's link on the `stack_used' or `__stack_user' list.  */
+   list_t list;
+@@ -228,6 +233,12 @@ struct pthread
+   {
+     __pthread_slist_t robust_list;
+     struct robust_list_head robust_head;
++
++    /* Padding for Popcorn Linux  */
++    struct {
++      __pthread_slist_t pad_robust_list;
++      struct robust_list_head pad_robust_head;
++    };
+   };
+ 
+ # define ENQUEUE_MUTEX_BOTH(mutex, val)					      \
+@@ -400,6 +411,9 @@ struct pthread
    /* Indicates whether is a C11 thread created by thrd_creat.  */
    bool c11;
  
@@ -208,6 +1126,32 @@ index 9dcf480bdf..f23355e0cd 100644
    /* This member must be last.  */
    char end_padding[];
  
+@@ -408,4 +422,25 @@ struct pthread
+ } __attribute ((aligned (TCB_ALIGNMENT)));
+ 
+ 
++#if defined (__x86_64__)
++
++# ifdef __ILP32__
++/* morestack.S in libgcc uses offset 0x40 to access __private_ss,   */
++_Static_assert (offsetof (struct pthread, header.__private_ss) == 0x40,
++		"offset of __private_ss != 0x40");
++/* NB: ssp_base used to be "long int __glibc_reserved2", which was
++   changed from 32 bits to 64 bits.  Make sure that the offset of the
++   next field, __glibc_unused2, is unchanged.  */
++_Static_assert (offsetof (struct pthread, header.__glibc_unused2) == 0x60,
++		"offset of __glibc_unused2 != 0x60");
++# else
++/* morestack.S in libgcc uses offset 0x70 to access __private_ss,   */
++_Static_assert (offsetof (struct pthread, header.__private_ss) == 0x70,
++		"offset of __private_ss != 0x70");
++_Static_assert (offsetof (struct pthread, header.__glibc_unused2) == 0x80,
++		"offset of __glibc_unused2 != 0x80");
++# endif
++
++#endif
++
+ #endif	/* descr.h */
 diff --git a/nptl/pthread_migrate.c b/nptl/pthread_migrate.c
 new file mode 100644
 index 0000000000..0a5be18df3
@@ -228,3 +1172,2152 @@ index 0000000000..0a5be18df3
 +  void *args = THREAD_GETMEM (self, popcorn_migrate);
 +  return args;
 +}
+diff --git a/remote_io/Makefile b/remote_io/Makefile
+new file mode 100644
+index 0000000000..6ec4f7dbbd
+--- /dev/null
++++ b/remote_io/Makefile
+@@ -0,0 +1,33 @@
++# Copyright (C) 2022 RASEC Technologies
++# This file is part of the GNU C Library.
++
++# The GNU C Library is free software; you can redistribute it and/or
++# modify it under the terms of the GNU Lesser General Public
++# License as published by the Free Software Foundation; either
++# version 2.1 of the License, or (at your option) any later version.
++
++# The GNU C Library is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++# Lesser General Public License for more details.
++
++# You should have received a copy of the GNU Lesser General Public
++# License along with the GNU C Library; if not, see
++# <https://www.gnu.org/licenses/>.
++
++#
++#	Sub-makefile for Remote I/O portion of the library.
++#
++subdir	:= remote_io
++
++include ../Makeconfig
++
++headers := platform.h debug/log.h debug/arch_crash.h
++
++routines := rio_message rio_write rio_server log platform
++
++$(objpfx)rio_message.os: $(common-objpfx)misc/bits/syscall.h
++$(objpfx)rio_write.os: $(common-objpfx)misc/bits/syscall.h
++
++
++include ../Rules
+diff --git a/remote_io/Versions b/remote_io/Versions
+new file mode 100644
+index 0000000000..b625c740e8
+--- /dev/null
++++ b/remote_io/Versions
+@@ -0,0 +1,10 @@
++libc {
++  GLIBC_PRIVATE {
++    pcn_server_port;
++    pcn_server_sockfd;
++    pcn_server_ip;
++    pcn_remote_io_active;
++    pcn_client_sockfd;
++    popcorn_log;
++  }
++}
+diff --git a/remote_io/debug/arch_crash.h b/remote_io/debug/arch_crash.h
+new file mode 100644
+index 0000000000..2a77b89fed
+--- /dev/null
++++ b/remote_io/debug/arch_crash.h
+@@ -0,0 +1,19 @@
++#ifndef _ARCH_CRASH_H
++#define _ARCH_CRASH_H
++
++#include <stdbool.h>
++
++/* Crash, placing up to 4 values in the first 4 integer registers of the
++ * architecture on which we're executing. */
++bool crash(long a, long b, long c, long d);
++
++/* These APIs will crash an application *only* if called on the corresponding
++ * architecture, i.e., crash_aarch64() will only crash the program if the
++ * calling thread is executing on aarch64. Similar to above, place up to 4
++ * values in the first 4 integer registers. */
++
++bool crash_aarch64(long a, long b, long c, long d);
++bool crash_powerpc64(long a, long b, long c, long d);
++bool crash_x86_64(long a, long b, long c, long d);
++
++#endif
+diff --git a/remote_io/debug/log.h b/remote_io/debug/log.h
+new file mode 100644
+index 0000000000..916f6bd3e8
+--- /dev/null
++++ b/remote_io/debug/log.h
+@@ -0,0 +1,14 @@
++#ifndef _DEBUG_LOG_H
++#define _DEBUG_LOG_H
++
++/*
++ * Open a per-thread log & log a statement.  Valid regardless of migration.
++ * @param format a message/format descriptor
++ * @param ... arguments to format descriptor
++ * @return the number of characters printed (excluding ending null byte) or -1
++ *         if there was an error
++ */
++int popcorn_log(const char *format, ...);
++
++#endif
++
+diff --git a/remote_io/log.c b/remote_io/log.c
+new file mode 100644
+index 0000000000..69a69d8327
+--- /dev/null
++++ b/remote_io/log.c
+@@ -0,0 +1,23 @@
++#include <stdio.h>
++#include <stdarg.h>
++#include <unistd.h>
++
++#define BUF_SIZE 32
++
++int popcorn_log(const char *format, ...)
++{
++  int ret = -1;
++  char buf[BUF_SIZE];
++  FILE *fp;
++  va_list ap;
++
++  snprintf(buf, BUF_SIZE, "/tmp/%d.log", gettid());
++  fp = fopen(buf, "a");
++  if(fp) {
++    va_start(ap, format);
++    ret = vfprintf(fp, format, ap);
++    fclose(fp);
++  }
++  return ret;
++}
++
+diff --git a/remote_io/message.h b/remote_io/message.h
+new file mode 100644
+index 0000000000..958345fae9
+--- /dev/null
++++ b/remote_io/message.h
+@@ -0,0 +1,29 @@
++#ifndef MESSAGE_H
++#define MESSAGE_H
++
++struct iovec;
++
++typedef enum {
++  PCN_TYPE_CONTROL,
++  PCN_TYPE_SYSCALL,
++} pcn_msg_type;
++
++typedef enum {
++  PCN_SYS_WRITE,
++} pcn_syscall;
++
++typedef enum {
++  PCN_CTL_ACK,
++  PCN_CTL_MIGRATE,
++} pcn_control;
++
++struct pcn_msg_hdr {
++  pcn_msg_type msg_type;
++  int msg_kind;
++  int msg_id;
++  int msg_size;  /* size of the message payload. */
++};
++
++int pcn_send (int fd, struct pcn_msg_hdr *hdr, struct iovec *payload, int cnt);
++
++#endif
+diff --git a/remote_io/pcn-platform.h b/remote_io/pcn-platform.h
+new file mode 100644
+index 0000000000..a8cf57648b
+--- /dev/null
++++ b/remote_io/pcn-platform.h
+@@ -0,0 +1,68 @@
++/*
++ * Popcorn-specific platform information.
++ *
++ * Author: Rob Lyerly <rlyerly@vt.edu>
++ * Date: February 13th, 2018
++ */
++
++#ifndef _PLATFORM_H
++#define _PLATFORM_H
++
++/* The size of a page in the system. */
++#define PAGESZ 4096UL
++
++/*
++ * Round down & up to the nearest pages, respectively.  Arguments must be of
++ * unsigned long/uint64_t type.
++ */
++#define PAGE_ROUND_DOWN( x ) ((x) & ~(PAGESZ - 1))
++#define PAGE_ROUND_UP( x ) PAGE_ROUND_DOWN((x) + PAGESZ - 1)
++
++/* The maximum number of nodes supported by the system. */
++#define MAX_POPCORN_NODES 32
++
++/* Status of thread within Popcorn's single system image */
++struct popcorn_thread_status {
++  int current_nid;  /* The thread's current node */
++  int proposed_nid; /* Destination node if somebody proposed migration */
++  int peer_nid;     /* Node ID of peer thread in SSI */
++  int peer_pid;     /* PID of peer thread in SSI */
++};
++
++/*
++ * Return the node ID on which the current thread is executing.
++ * @return the current node ID or -1 otherwise
++ */
++extern int popcorn_getnid(void);
++
++/*
++ * Query thread status information.  Populates the thread status struct with
++ * the current thread's status.
++ *
++ * @param status thread status struct
++ * @return 0 if completed successfully or non-zero otherwise
++ */
++extern int popcorn_getthreadinfo(struct popcorn_thread_status *status);
++
++/* Status of nodes in Popcorn's single system image */
++struct popcorn_node_status {
++  unsigned int status; /* 1 if online, 0 if not */
++  int arch;            /* Architecture of node -- see arch.h */
++  int distance;        /* Hop distance between current and other node */
++};
++
++/*
++ * Query node status information.  Populates the integer passed via pointer
++ * with the ID of the origin node and populates the array of nodes status
++ * structs with their current status.
++ *
++ * @param origin pointer to integer to be set with the origin ID
++ * @param status array of node status structs, must have MAX_POPCORN_NODES
++ *               elements
++ * @return 0 if completed successfully or non-zero otherwise
++ */
++extern int popcorn_getnodeinfo(int *origin,
++                        struct popcorn_node_status status[MAX_POPCORN_NODES]);
++
++#endif /* _PLATFORM_H */
++
+diff --git a/remote_io/platform.c b/remote_io/platform.c
+new file mode 100644
+index 0000000000..e4ce5b1905
+--- /dev/null
++++ b/remote_io/platform.c
+@@ -0,0 +1,20 @@
++#include <errno.h>
++#include "pcn-platform.h"
++
++int popcorn_getnid(void)
++{
++  errno = ENOSYS;
++  return -1;
++}
++
++int popcorn_getthreadinfo(struct popcorn_thread_status *a)
++{
++  errno = ENOSYS;
++  return -1;
++}
++
++int popcorn_getnodeinfo(int *a, struct popcorn_node_status *b)
++{
++  errno = ENOSYS;
++  return -1;
++}
+diff --git a/remote_io/platform.h b/remote_io/platform.h
+new file mode 100644
+index 0000000000..1690818300
+--- /dev/null
++++ b/remote_io/platform.h
+@@ -0,0 +1,68 @@
++/*
++ * Popcorn-specific platform information.
++ *
++ * Author: Rob Lyerly <rlyerly@vt.edu>
++ * Date: February 13th, 2018
++ */
++
++#ifndef _PLATFORM_H
++#define _PLATFORM_H
++
++/* The size of a page in the system. */
++#define PAGESZ 4096UL
++
++/*
++ * Round down & up to the nearest pages, respectively.  Arguments must be of
++ * unsigned long/uint64_t type.
++ */
++#define PAGE_ROUND_DOWN( x ) ((x) & ~(PAGESZ - 1))
++#define PAGE_ROUND_UP( x ) PAGE_ROUND_DOWN((x) + PAGESZ - 1)
++
++/* The maximum number of nodes supported by the system. */
++#define MAX_POPCORN_NODES 32
++
++/* Status of thread within Popcorn's single system image */
++struct popcorn_thread_status {
++  int current_nid;  /* The thread's current node */
++  int proposed_nid; /* Destination node if somebody proposed migration */
++  int peer_nid;     /* Node ID of peer thread in SSI */
++  int peer_pid;     /* PID of peer thread in SSI */
++};
++
++/*
++ * Return the node ID on which the current thread is executing.
++ * @return the current node ID or -1 otherwise
++ */
++int popcorn_getnid();
++
++/*
++ * Query thread status information.  Populates the thread status struct with
++ * the current thread's status.
++ *
++ * @param status thread status struct
++ * @return 0 if completed successfully or non-zero otherwise
++ */
++int popcorn_getthreadinfo(struct popcorn_thread_status *status);
++
++/* Status of nodes in Popcorn's single system image */
++struct popcorn_node_status {
++  unsigned int status; /* 1 if online, 0 if not */
++  int arch;            /* Architecture of node -- see arch.h */
++  int distance;        /* Hop distance between current and other node */
++};
++
++/*
++ * Query node status information.  Populates the integer passed via pointer
++ * with the ID of the origin node and populates the array of nodes status
++ * structs with their current status.
++ *
++ * @param origin pointer to integer to be set with the origin ID
++ * @param status array of node status structs, must have MAX_POPCORN_NODES
++ *               elements
++ * @return 0 if completed successfully or non-zero otherwise
++ */
++int popcorn_getnodeinfo(int *origin,
++                        struct popcorn_node_status status[MAX_POPCORN_NODES]);
++
++#endif /* _PLATFORM_H */
++
+diff --git a/remote_io/remote_io.h b/remote_io/remote_io.h
+new file mode 100644
+index 0000000000..f67557d41c
+--- /dev/null
++++ b/remote_io/remote_io.h
+@@ -0,0 +1,20 @@
++#ifndef REMOTE_IO_H
++#define REMOTE_IO_H
++
++#include <sys/uio.h>
++
++/* Server IP addresses.  */
++extern uint32_t pcn_server_ip;
++extern uint16_t pcn_server_port;
++extern int pcn_server_sockfd;
++extern int pcn_client_sockfd;
++extern int pcn_remote_io_active;
++
++ssize_t pcn_readv (int fd, const struct iovec *iov, int iovecnt);
++ssize_t pcn_writev (int fd, const struct iovec *iov, int iovecnt);
++
++int pcn_server_connect (uint32_t ip);
++void pcn_start_server (void);
++void pcn_migrate (void);
++
++#endif
+diff --git a/remote_io/rio_message.c b/remote_io/rio_message.c
+new file mode 100644
+index 0000000000..c1dc2f1489
+--- /dev/null
++++ b/remote_io/rio_message.c
+@@ -0,0 +1,77 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++
++#include <ifaddrs.h>
++#include <net/if.h>
++
++#include <assert.h>
++#include <unistd.h>
++#include <errno.h>
++#include <sys/socket.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#include <netdb.h>
++#include <poll.h>
++
++#include <stdarg.h>
++#include <sys/syscall.h>
++#include <sys/types.h>
++
++#include <sys/wait.h>
++#include <signal.h>
++
++//#include "syscall.h"
++
++#include <misc/bits/syscall.h>
++
++#include "remote_io.h"
++#include "server.h"
++#include "message.h"
++
++#define RIO_BUF_SZ 512
++
++int pcn_remote_io_active;
++uint32_t pcn_server_ip;
++uint16_t pcn_server_port;
++int pcn_server_sockfd;
++int pcn_client_sockfd;
++
++void
++musl_rio_printf (char *str, ...)
++{
++  char buf[RIO_BUF_SZ];
++  va_list ap;
++
++  va_start (ap, str);
++  vsnprintf (buf, RIO_BUF_SZ, str, ap);
++  va_end (ap);
++
++  syscall (SYS_write, 1, buf, strlen (buf));
++}
++
++int
++musl_pcn_send (int fd, struct pcn_msg_hdr *hdr, struct iovec *payload, int cnt)
++{
++  int size = 0;
++  int i;
++  struct iovec out[cnt+1];
++
++  for (i = 0; i < cnt; i++)
++    size += payload[i].iov_len;
++
++  hdr->msg_size = size;
++
++  out[0].iov_base = hdr;
++  out[0].iov_len = sizeof (struct pcn_msg_hdr);
++
++  for (i = 1; i <= cnt; i++) {
++    out[i].iov_base = payload[i-1].iov_base;
++    out[i].iov_len = payload[i-1].iov_len;
++  }
++
++  /* This write will terminate with a SIGPIPE if the connection
++     between the client and the host has closed unexpectedly.  */
++  return syscall (SYS_writev, fd, out, cnt + 1);
++}
+diff --git a/remote_io/rio_server.c b/remote_io/rio_server.c
+new file mode 100644
+index 0000000000..4d113e194b
+--- /dev/null
++++ b/remote_io/rio_server.c
+@@ -0,0 +1,612 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++
++#include <ifaddrs.h>
++#include <net/if.h>
++
++#include <assert.h>
++#include <unistd.h>
++#include <errno.h>
++#include <sys/socket.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#include <netdb.h>
++#include <poll.h>
++
++#include <stdarg.h>
++#include <sys/syscall.h>
++#include <sys/types.h>
++
++#include <sys/wait.h>
++#include <signal.h>
++
++#include <remote_io.h>
++#include <server.h>
++#include <message.h>
++
++#include <misc/bits/syscall.h>
++
++#include "syscall.h"
++#include "remote_io.h"
++#include "message.h"
++
++
++extern int pcn_remote_io_active;
++extern uint32_t pcn_server_ip;
++extern uint16_t pcn_server_port;
++
++/* On a server process, pcn_server_sockfd represents the socket connection
++ * to the primary server if necessary. pcn_client_sockfd represents the
++ * connection to the client.
++ *
++ * On the local application, pcn_server_sockfd represents the socket
++ * connection to the local server, and pcn_client_sockfd is unused.
++ */
++extern int pcn_server_sockfd;
++extern int pcn_client_sockfd;
++uint32_t local_ip;
++
++static int migrate_pending;
++static int child_pid = -1;
++
++static int rio_debug;
++
++static uint16_t alloc_server_port ();
++
++#define RIO_BUF_SZ 512
++
++void
++rio_printf (char *str, ...)
++{
++  char buf[RIO_BUF_SZ];
++  va_list ap;
++
++  va_start (ap, str);
++  vsnprintf (buf, RIO_BUF_SZ, str, ap);
++  va_end (ap);
++
++  syscall (SYS_write, 1, buf, strlen (buf));
++}
++
++void
++pcn_server_init ()
++{
++  pcn_remote_io_active = 0;
++  pcn_server_sockfd = -1;
++  return;
++
++//  pcn_remote_io_active = 1;
++  local_ip = htonl (0x7f000001); /* 127.0.0.1  */
++  pcn_server_port = alloc_server_port ();
++  pcn_server_sockfd = pcn_server_connect (0);
++}
++
++static void
++do_sigchld (int signo)
++{
++  int status, pid;
++
++  pid = wait (&status);
++  assert (pid == child_pid);
++  child_pid = -100;
++}
++
++/*
++ * At present, this function returns the first non-local IPv4 address
++ * on the machine calling it.  This may cause problems if the machine
++ * is multihomed.
++ */
++uint32_t
++pcn_get_ip ()
++{
++  struct ifaddrs *myaddrs, *ifa;
++  void *in_addr;
++  uint32_t ip = 0;
++
++  local_ip = htonl (0x7f000001); /* 127.0.0.1  */
++
++  if(getifaddrs(&myaddrs) != 0)
++    {
++      perror("getifaddrs");
++      exit(1);
++    }
++
++  for (ifa = myaddrs; ifa != NULL; ifa = ifa->ifa_next)
++    {
++      struct sockaddr_in *s4;
++
++      if (ifa->ifa_addr == NULL)
++	continue;
++      if (!(ifa->ifa_flags & IFF_UP))
++	continue;
++
++      if (ifa->ifa_addr->sa_family != AF_INET)
++	continue;
++
++      s4 = (struct sockaddr_in *)ifa->ifa_addr;
++      in_addr = &s4->sin_addr;
++      ip = *(long *) in_addr;
++
++      if (ip != local_ip)
++	break;
++    }
++
++  freeifaddrs(myaddrs);
++
++  return ip;
++}
++
++static uint16_t
++alloc_server_port ()
++{
++  int sockfd = socket (AF_INET, SOCK_STREAM, 0);
++  struct addrinfo hints, *ai;
++  struct sockaddr_in sin;
++  socklen_t len = sizeof (sin);
++  char buf[INET_ADDRSTRLEN];
++  int res;
++
++  inet_ntop (AF_INET, &pcn_server_ip, buf, sizeof (buf));
++
++  memset (&hints, 0, sizeof hints);
++  hints.ai_family = AF_INET;
++  hints.ai_socktype = SOCK_STREAM;
++  hints.ai_flags = AI_PASSIVE;
++
++  if ((res = getaddrinfo (buf, NULL, &hints, &ai)) != 0) {
++    rio_printf ("%s: %s\n", __FUNCTION__, gai_strerror (res));
++    exit (EXIT_FAILURE);
++  }
++
++  assert (ai != NULL);
++
++  if (bind (sockfd, ai->ai_addr, ai->ai_addrlen) < 0) {
++    rio_printf ("%s: failed to allocate IP port\n", __FUNCTION__);
++    exit (EXIT_FAILURE);
++  }
++
++  if (getsockname(sockfd, (struct sockaddr *)&sin, &len) == -1) {
++    perror("getsockname");
++    exit (EXIT_FAILURE);
++  }
++
++  close (sockfd);
++  freeaddrinfo (ai);
++
++  return sin.sin_port;
++}
++
++static int
++connect_to (uint32_t ip, uint16_t port)
++{
++  int sockfd, res;
++  struct addrinfo hints, *ai;
++  char s_addr[INET_ADDRSTRLEN], s_port[INET_ADDRSTRLEN];
++
++  memset (&hints, 0, sizeof hints);
++  hints.ai_family = AF_INET;
++  hints.ai_socktype = SOCK_STREAM;
++
++  inet_ntop (AF_INET, &ip, s_addr, INET_ADDRSTRLEN);
++  snprintf (s_port, INET_ADDRSTRLEN, "%d", port);
++
++  if ((res = getaddrinfo (s_addr, s_port, &hints, &ai)) != 0) {
++    rio_printf ("getaddrinfo: %s\n", gai_strerror (res));
++    exit (EXIT_FAILURE);
++  }
++
++  assert (ai != NULL && ai->ai_family == AF_INET);
++
++  if (rio_debug)
++    rio_printf ("connecting to %s:%s\n", s_addr, s_port);
++
++  sockfd = socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
++  if (sockfd < 0)
++    {
++      perror ("socket");
++      exit (EXIT_FAILURE);
++    }
++
++  if (connect (sockfd, ai->ai_addr, ai->ai_addrlen) == -1) {
++    perror ("connection failed");
++    rio_printf ("   -> %s:%s\n", s_addr, s_port);
++    exit (EXIT_FAILURE);
++  }
++
++  return sockfd;
++}
++
++static void
++do_control (struct pcn_msg_hdr *hdr, int fd)
++{
++  if (local_ip != pcn_server_ip) {
++    write (pcn_server_ip, hdr, sizeof (struct pcn_msg_hdr));
++    return;
++  }
++
++  switch (hdr->msg_kind) {
++  case PCN_CTL_MIGRATE:
++    rio_printf ("server: received migration request\n");
++    migrate_pending = 1;
++    break;
++
++  default:
++    ;
++  }
++}
++
++static void
++do_syscall (struct pcn_msg_hdr *hdr, int fd)
++{
++  if (rio_debug) {
++    char s_addr[INET_ADDRSTRLEN], l_addr[INET_ADDRSTRLEN];
++
++    inet_ntop (AF_INET, &pcn_server_ip, s_addr, INET_ADDRSTRLEN);
++    inet_ntop (AF_INET, &local_ip, l_addr, INET_ADDRSTRLEN);
++
++    rio_printf ("%s: %s -> %s\n", __FUNCTION__, s_addr, l_addr);
++  }
++
++  switch (hdr->msg_kind) {
++  case PCN_SYS_WRITE:
++    rio_get_write (hdr, fd);
++    break;
++
++  default:
++    ;
++  }
++}
++
++/* Returns 1 if a client has been dropped.  */
++static int
++process_message (int fd)
++{
++  struct pcn_msg_hdr hdr;
++  int res;
++
++  res = read (fd, &hdr, sizeof (hdr));
++
++  if (res == 0) {
++    if (!migrate_pending) {
++      rio_printf ("client hung up... terminating\n");
++      exit (EXIT_SUCCESS);
++    }
++
++    rio_printf ("client hung up\n");
++
++    return 1;
++  }
++
++  if (res < sizeof (hdr)) {
++    rio_printf ("something went wrong - malformed message (%d)\n", fd);
++    exit (EXIT_FAILURE);
++  }
++
++  switch (hdr.msg_type) {
++  case PCN_TYPE_CONTROL:
++    do_control (&hdr, fd);
++    break;
++
++  case PCN_TYPE_SYSCALL:
++    do_syscall (&hdr, fd);
++    break;
++
++  default:
++    rio_printf ("unexpected message type: %d\n", hdr.msg_type);
++    ;
++  }
++
++  return 0;
++}
++
++static void
++remote_io_server (int listen_fd)
++{
++  /* There are at most three socket descriptors to keep track of:
++   *   1: The listener socket
++   *   2: The socket to the primary server
++   *   3: The socket to the client
++   *
++   * The listener socket is planced in pfds[0]. If a connection is
++   * required to the primary server, it will be in pfds[1]. Otherwise
++   * the socket to the client will be placed in pfds[1] or pfds[2]
++   * depending on the existance of the primary server connection.
++   */
++  struct pollfd pfds[3];
++  int fd_count = 1;
++
++  local_ip = pcn_get_ip ();
++
++  //rio_printf ("starting server:%hd\n", pcn_server_port);
++
++  pfds[0].fd = listen_fd;
++  pfds[0].events = POLLIN;
++
++  if (local_ip != pcn_server_ip)
++    {
++      pcn_server_sockfd = connect_to (pcn_server_ip, pcn_server_port);
++      pfds[1].fd = pcn_server_sockfd;
++      pfds[1].events = POLLIN;
++      fd_count = 2;
++    }
++
++  while (1) {
++    int poll_count = poll (pfds, fd_count, -1);
++    struct sockaddr_storage remoteaddr;
++    socklen_t addrlen;
++    int i;
++
++    if (poll_count == -1 && child_pid == -100)
++      child_pid = -1;
++    else if (poll_count == -1 ) {
++      perror ("poll");
++      exit (EXIT_FAILURE);
++    }
++
++    if (rio_debug)
++      rio_printf ("%s: connections = %d\n", __FUNCTION__, fd_count);
++
++    for (i = 0; i < fd_count; i++) {
++      if (pfds[i].revents & POLLIN) {
++	int res;
++
++	if (pfds[i].fd != listen_fd) {
++	  res = process_message (pfds[i].fd);
++
++	  if (res == 1) {
++	    assert (pfds[i].fd == pcn_client_sockfd);
++
++	    fd_count--;
++	    pcn_client_sockfd = -1;
++	    pfds[fd_count].fd = pcn_client_sockfd;
++	  }
++
++	  continue;
++	}
++
++	addrlen = sizeof (remoteaddr);
++
++	pcn_client_sockfd = accept (listen_fd, (struct sockaddr *)&remoteaddr,
++				    &addrlen);
++
++	if (pcn_client_sockfd < 0)
++	  perror ("failed to accept client");
++	else {
++	  char buf[INET_ADDRSTRLEN];
++	  struct sockaddr_in *sin = (struct sockaddr_in *)&remoteaddr;
++
++	  if (1 || rio_debug) {
++	    inet_ntop (remoteaddr.ss_family, &sin->sin_addr, buf,
++		       INET6_ADDRSTRLEN);
++	    rio_printf ("%s: accepted client %s\n", __FUNCTION__, buf);
++	  }
++
++	  pfds[fd_count].fd = pcn_client_sockfd;
++	  pfds[fd_count].events = POLLIN;
++	  pfds[fd_count].revents = 0;
++	  fd_count++;
++	  migrate_pending = 0;
++	}
++      } else if (pfds[i].revents & POLLHUP) {
++	assert (pfds[i].fd == pcn_client_sockfd);
++	// terminate server if client necessary
++	// FIXME: this is detected by receiving 0 bytes
++
++	if (rio_debug)
++	  rio_printf ("client disconnected... shutting down\n");
++
++	exit (EXIT_SUCCESS);
++      }
++    }
++  }
++
++  if (pcn_server_ip != local_ip)
++    ; // coordinate shutdown
++  exit (EXIT_SUCCESS);
++}
++
++/*
++ * Connect to the I/O server.
++ *
++ * A Popcorn application may be launched on machine A and
++ * checkpoint/restored onto a machine B. Note that machines A and B
++ * may be the same machine, e.g. Application launched on A, migrates
++ * over to B, then migrates back to A.
++ *
++ * A Popcorn application has at most two servers, a server running on
++ * the local host and the primary server running on the machine that
++ * originally launched the Popcorn application. The secondary server
++ * on a remote machine is necessary to handle signal forwarding
++ * without introducing additional threads into the Popcorn
++ * application. Communication between the Popcorn application and a
++ * server running on the same machine is conducted via local network.
++ *
++ * A new server is spawned in two cases:
++ *   1) When the Popcorn application is first launched on Machine A.
++ *   2) When the Popcorn application has migrated to Machine B != A.
++ *
++ * This function is responsible for setting up a server if necessary.
++ * It returns a socket descriptor to the local server.
++ */
++int
++pcn_server_connect (uint32_t ip)
++{
++  uint32_t myip = pcn_get_ip ();
++  int sockfd = -1;
++  struct addrinfo hints, *ai;
++  //struct sockaddr_in sin;
++  //socklen_t len = sizeof (sin);
++  uint16_t port = pcn_server_port;
++  int res;
++  char buf[INET_ADDRSTRLEN], *s_addr = NULL, *s_port = NULL;
++
++  rio_printf ("entering %s\n", __FUNCTION__);
++
++  /* TODO: handle 'ip' for remote servers".  */
++  if (myip != pcn_server_ip)
++    {
++      memset (&hints, 0, sizeof (hints));
++      hints.ai_family = AF_INET;
++      hints.ai_socktype = SOCK_STREAM;
++      hints.ai_flags = AI_PASSIVE;
++
++      snprintf (buf, INET_ADDRSTRLEN, "%d", pcn_server_port);
++      s_port = buf;
++
++      if ((res = getaddrinfo (s_addr, s_port, &hints, &ai)) != 0) {
++	rio_printf ("getaddrinfo: %s\n", gai_strerror (res));
++	exit (EXIT_FAILURE);
++      }
++
++      assert (ai != NULL && ai->ai_family == AF_INET);
++
++      sockfd = socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
++      if (sockfd < 0)
++	{
++	  perror ("socket");
++	  exit (EXIT_FAILURE);
++	}
++
++      if (bind (sockfd, ai->ai_addr, ai->ai_addrlen) == -1)
++	{
++	  close (sockfd);
++	  perror ("bind");
++	  exit (EXIT_FAILURE);
++	}
++
++      if (listen (sockfd, 2) == -1) {
++	perror ("listen");
++	exit (EXIT_FAILURE);
++      }
++
++      if (pcn_server_ip == 0)
++	{
++	  pcn_server_ip = myip;
++	  pcn_server_port = port;
++	}
++
++      freeaddrinfo (ai);
++
++      child_pid = fork ();
++
++      if (child_pid != 0) {
++	struct sigaction sa;
++
++	sigemptyset(&sa.sa_mask);
++	sa.sa_flags = 0;
++	sa.sa_handler = do_sigchld;
++
++	sigaction(SIGCHLD, &sa, NULL);
++
++	/* Run the application on the fork'ed process so that CRIU
++	   does not attempt to suspend the server. Eventually, this
++	   might need to use a standalone server.  */
++
++	remote_io_server (sockfd);   /* Never return.  */
++      }
++
++      close (sockfd);
++    }
++
++  /* Return a socket to the server running on the local machine.  */
++  return connect_to (local_ip, port);
++  //return connect_to (pcn_server_ip, port);
++}
++
++/* Launch a server without forking a new process for testing purposes.  */
++void
++pcn_start_server ()
++{
++  uint32_t myip = pcn_get_ip ();
++  int sockfd = -1;
++  struct addrinfo hints, *ai;
++  uint16_t port = pcn_server_port;
++  int res;
++  char buf[INET_ADDRSTRLEN], *s_addr = NULL, *s_port = NULL;
++
++  memset (&hints, 0, sizeof (hints));
++  hints.ai_family = AF_INET;
++  hints.ai_socktype = SOCK_STREAM;
++  hints.ai_flags = AI_PASSIVE;
++
++  snprintf (buf, INET_ADDRSTRLEN, "%d", pcn_server_port);
++  s_port = buf;
++
++  if ((res = getaddrinfo (s_addr, s_port, &hints, &ai)) != 0) {
++    rio_printf ("getaddrinfo: %s\n", gai_strerror (res));
++    exit (EXIT_FAILURE);
++  }
++
++  assert (ai != NULL && ai->ai_family == AF_INET);
++
++  sockfd = socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
++  if (sockfd < 0)
++    {
++      perror ("socket");
++      exit (EXIT_FAILURE);
++    }
++
++  if (bind (sockfd, ai->ai_addr, ai->ai_addrlen) == -1)
++    {
++      close (sockfd);
++      perror ("bind");
++      exit (EXIT_FAILURE);
++    }
++
++  if (pcn_server_ip == 0)
++    {
++      pcn_server_ip = myip;
++      pcn_server_port = port;
++    }
++
++  if (listen (sockfd, 2) == -1) {
++    perror ("listen");
++    exit (EXIT_FAILURE);
++  }
++
++  freeaddrinfo (ai);
++
++  remote_io_server (sockfd);
++}
++
++int
++pcn_send (int fd, struct pcn_msg_hdr *hdr, struct iovec *payload, int cnt)
++{
++  int size = 0;
++  int i;
++  struct iovec out[cnt+1];
++
++  for (i = 0; i < cnt; i++)
++    size += payload[i].iov_len;
++
++  hdr->msg_size = size;
++
++  out[0].iov_base = hdr;
++  out[0].iov_len = sizeof (struct pcn_msg_hdr);
++
++  for (i = 1; i <= cnt; i++) {
++    out[i].iov_base = payload[i-1].iov_base;
++    out[i].iov_len = payload[i-1].iov_len;
++  }
++
++  /* This write will terminate with a SIGPIPE if the connection
++     between the client and the host has closed unexpectedly.  */
++  return syscall (SYS_writev, fd, out, cnt + 1);
++}
++
++void
++pcn_migrate ()
++{
++  struct pcn_msg_hdr hdr;
++
++  hdr.msg_type = PCN_TYPE_CONTROL;
++  hdr.msg_kind = PCN_CTL_MIGRATE;
++
++  pcn_send (pcn_server_sockfd, &hdr, NULL, 0);
++
++  close (pcn_server_sockfd);
++
++  pcn_server_sockfd = -1;
++}
+diff --git a/remote_io/rio_write.c b/remote_io/rio_write.c
+new file mode 100644
+index 0000000000..f30f0d1ffc
+--- /dev/null
++++ b/remote_io/rio_write.c
+@@ -0,0 +1,112 @@
++/* writev system call forwarding.
++ *
++ * Eventually, this needs to be agnostic to the C library...
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++#include <remote_io.h>
++#include <message.h>
++#include <sys/socket.h>
++#include <syscall.h>
++#include <unistd.h>
++
++#include <misc/bits/syscall.h>
++
++#include "syscall.h"
++#include "remote_io.h"
++#include "message.h"
++
++struct pcn_write_msg {
++  int fd;
++  int size;
++  char buf[0];
++};
++
++extern uint32_t local_ip;
++void rio_printf (char *str, ...);
++
++void
++rio_get_write (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_write_msg *msg = malloc (hdr->msg_size);
++  int res;
++
++  //rio_printf ("%s\n", __FUNCTION__);
++
++  res = recv (fd, msg, hdr->msg_size, 0);
++  if (res < hdr->msg_size)
++    rio_printf ("error: lost data\n");
++
++  if (local_ip != pcn_server_ip) {
++    struct iovec iov[1];
++
++    iov[0].iov_base = msg->buf;
++    iov[0].iov_len = msg->size;
++
++    //syscall (SYS_writev, pcn_server_ip, iov, 2);
++    pcn_writev (msg->fd, iov, 1);
++  } else {
++    write (msg->fd, msg->buf, msg->size);
++  }
++
++  free (msg);
++
++//  hdr->msg_type = PCN_TYPE_CONTROL;
++//  hdr->msg_kind = PCN_CTL_ACK;
++//
++//  write (fd, hdr, sizeof (struct pcn_msg_hdr));
++}
++
++ssize_t pcn_writev (int fd, const struct iovec *iov, int iovcnt)
++{
++  int i, size = 0;
++//  int off = 0;
++//  uint8_t *buf;
++  struct pcn_msg_hdr hdr;
++  struct iovec payload[iovcnt + 1];
++  struct pcn_write_msg msg;
++  int res;
++
++  /* Check if the server is down.  */
++  if (pcn_server_sockfd < 0)
++    return syscall (SYS_writev, fd, iov, iovcnt);
++
++  for (i = 0; i < iovcnt; i++)
++    size += iov[i].iov_len;
++
++//  buf = malloc (size);
++//
++//  for (i = 0; i < iovcnt; i++) {
++//    memcpy (buf + off, iov[i].iov_base, iov[i].iov_len);
++//    off += iov[i].iov_len;
++//  }
++
++  msg.fd = fd;
++  msg.size = size;
++
++  payload[0].iov_base = &msg;
++  payload[0].iov_len = sizeof (msg);
++
++  for (i = 1; i < iovcnt+1; i++) {
++    payload[i].iov_base = iov[i-1].iov_base;
++    payload[i].iov_len = iov[i-1].iov_len;
++  }
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_WRITE;
++  hdr.msg_id = 0;
++
++  res = pcn_send (pcn_server_sockfd, &hdr, payload, iovcnt+1);
++
++//  printf ("size: hdr = %zu, msg = %zu (%d), payload = %d\n",
++//	  sizeof (hdr), sizeof (msg), msg.size, size);
++//
++//  printf ("transmitted %d bytes\n", res);
++
++  //res = read (pcn_server_sockfd, &hdr, sizeof hdr);
++
++  return res;
++}
+diff --git a/remote_io/server.h b/remote_io/server.h
+new file mode 100644
+index 0000000000..9e32576569
+--- /dev/null
++++ b/remote_io/server.h
+@@ -0,0 +1,12 @@
++#ifndef SERVER_H
++#define SERVER_H
++
++#include <stdint.h>
++
++struct pcn_msg_hdr;
++
++uint32_t pcn_get_ip ();
++
++void rio_get_write (struct pcn_msg_hdr *hdr, int fd);
++
++#endif
+diff --git a/remote_io/test-1.c b/remote_io/test-1.c
+new file mode 100644
+index 0000000000..b1e67c0314
+--- /dev/null
++++ b/remote_io/test-1.c
+@@ -0,0 +1,87 @@
++// x86_64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/x86_64-popcorn-linux-gnu/sysroot/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/x86_64-popcorn-linux-gnu/sysroot/lib/ t.c
++
++#include <stdio.h>
++#include <string.h>
++#include <sys/syscall.h>
++#include <unistd.h>
++#include <sys/mman.h>
++
++struct mmap_entries {
++  unsigned long start, size;
++};
++
++extern void _dl_rio_print_dso ();
++extern struct mmap_entries *_dl_rio_get_mmap_entries ();
++
++char msg[] = "munmap complete: ";
++char msg_fail[] = "failed\n";
++char msg_succ[] = "succeeded\n";
++
++int
++do_munmap (unsigned long addr, unsigned long len)
++{
++  int ret;
++
++  asm volatile ("syscall"
++		: "=a" (ret)
++		: "0"(SYS_munmap), "D"(addr), "S"(len));
++
++  return ret;
++}
++
++int
++do_write (int fd, unsigned long addr, unsigned long len)
++{
++  int ret;
++
++  asm volatile ("syscall"
++		: "=a" (ret)
++		: "0"(SYS_write), "D"(fd), "S"(addr), "d"(len)
++		: "rcx", "r11", "memory");
++
++  return ret;
++}
++
++int
++main ()
++{
++  struct mmap_entries *me;
++  unsigned long size;
++  int i, ret, len[3];
++  int ps = sysconf(_SC_PAGE_SIZE);
++
++  printf ("pid = %d\n", getpid ());
++
++  _dl_rio_print_dso ();
++
++  me = _dl_rio_get_mmap_entries ();
++
++  len[0] = strlen (msg);
++  len[1] = strlen (msg_fail);
++  len[2] = strlen (msg_succ);
++
++  for (i = 0; me[i].size != 0; i++)
++    {
++      //ret = syscall (SYS_munmap, me[i].start, me[i].size);
++      //ret = mprotect (&me[i].start, me[i].size, PROT_READ);
++
++      do_munmap (me[i].start, me[1].size);
++      do_write (1, msg, len[0]);
++
++      if (ret)
++	do_write (1, msg_fail, len[1]);
++      else
++	do_write (1, msg_succ, len[2]);
++
++//      if (ret)
++//	{
++//	  perror ("munmap");
++//	  printf ("  %lx - %d\n", me[i].start, me[i].size);
++//	}
++    }
++
++  while (i != 0)
++    ;
++
++  return 0;
++}
+diff --git a/sysdeps/aarch64/dl-machine.h b/sysdeps/aarch64/dl-machine.h
+index 8ffa0d1c51..bde4f28107 100644
+--- a/sysdeps/aarch64/dl-machine.h
++++ b/sysdeps/aarch64/dl-machine.h
+@@ -126,6 +126,8 @@ elf_machine_runtime_setup (struct link_map *l, int lazy, int profile)
+ .type _dl_start_user, %function						\n\
+ _start:									\n\
+ 	mov	" PTR "0, " PTR_SP "					\n\
++	// Preserve the frame pointer for reloading			\n\
++	mov	x28, x29						\n\
+ 	bl	_dl_start						\n\
+ 	// returns user entry point in x0				\n\
+ 	mov	x21, x0							\n\
+@@ -177,6 +179,8 @@ _dl_start_user:								\n\
+ 	// load the finalizer function					\n\
+ 	adrp	x0, _dl_fini						\n\
+ 	add	" PTR "0, " PTR "0, #:lo12:_dl_fini			\n\
++	// Restore the frame pointer					\n\
++	mov	x29, x28						\n\
+ 	// jump to the user_s entry point				\n\
+ 	br      x21							\n\
+ ");
+diff --git a/sysdeps/aarch64/nptl/pthreaddef.h b/sysdeps/aarch64/nptl/pthreaddef.h
+index 892b869fc2..8fb905dd0a 100644
+--- a/sysdeps/aarch64/nptl/pthreaddef.h
++++ b/sysdeps/aarch64/nptl/pthreaddef.h
+@@ -25,8 +25,8 @@
+ /* Minimal stack size after allocating thread descriptor and guard size.  */
+ #define MINIMAL_REST_STACK 2048
+ 
+-/* Alignment requirement for TCB.  */
+-#define TCB_ALIGNMENT 16
++/* Alignment requirement for TCB.  Bumped up to 64 for x86-64 compatibility.  */
++#define TCB_ALIGNMENT 64
+ 
+ /* Location of current stack frame.  */
+ #define CURRENT_STACK_FRAME	__builtin_frame_address (0)
+diff --git a/sysdeps/aarch64/nptl/tls.h b/sysdeps/aarch64/nptl/tls.h
+index e5627f777e..7b4a2c4813 100644
+--- a/sysdeps/aarch64/nptl/tls.h
++++ b/sysdeps/aarch64/nptl/tls.h
+@@ -64,6 +64,9 @@ typedef struct
+ /* Alignment requirements for the TCB.  */
+ # define TLS_TCB_ALIGN		__alignof__ (struct pthread)
+ 
++/* Popcorn Linux Padding.  */
++# define TLS_TCB_PCN_PAD	0x40
++
+ /* Install the dtv pointer.  The pointer passed is to the element with
+    index -1 which contain the length.  */
+ # define INSTALL_DTV(tcbp, dtvp) \
+@@ -80,6 +83,7 @@ typedef struct
+ /* Code to initially initialize the thread pointer.  This might need
+    special attention since 'errno' is not yet available and if the
+    operation can cause a failure 'errno' must not be touched.  */
++/* Might need to set tcbp->private = tcbp for x86-64.  */
+ # define TLS_INIT_TP(tcbp) \
+   ({ __asm __volatile ("msr tpidr_el0, %0" : : "r" (tcbp)); NULL; })
+ 
+@@ -94,6 +98,9 @@ typedef struct
+ # define THREAD_SELF \
+  ((struct pthread *)__builtin_thread_pointer () - 1)
+ 
++# define GET_TP \
++  ({ void *tp; __asm __volatile ("mrs %0, tpidr_el0" : "=r" (tp)); tp;})
++
+ /* Magic for libthread_db to know how to do THREAD_SELF.  */
+ # define DB_THREAD_SELF \
+   CONST_THREAD_AREA (64, sizeof (struct pthread))
+diff --git a/sysdeps/unix/sysv/linux/__libc_start_main_popcorn.c b/sysdeps/unix/sysv/linux/__libc_start_main_popcorn.c
+new file mode 100644
+index 0000000000..2b12fa7010
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/__libc_start_main_popcorn.c
+@@ -0,0 +1,20 @@
++/* Build instructions:
++
++clang -O0 -fno-common -popcorn-libc -mllvm -optimize-regalloc \
++     -target aarch64-linux-gnu -S __libc_start_main_popcorn.c -fno-addrsig
++
++clang -O0 -fno-common -popcorn-libc -mllvm -optimize-regalloc \
++     -target x86_64-linux-gnu -S __libc_start_main_popcorn.c -fno-addrsig
++*/
++
++/* Wrapper function of __libc_start_main.  */
++
++#include <stdlib.h>
++
++int __libc_start_main_popcorn (int (*main) (int, char **, char **),
++			       int argc, char **argv, char **environ)
++{
++  exit (main (argc, argv, environ));
++
++  return 0;
++}
+diff --git a/sysdeps/unix/sysv/linux/aarch64/gettimeofday.c b/sysdeps/unix/sysv/linux/aarch64/gettimeofday.c
+index 0e3c7f76df..37c649aa27 100644
+--- a/sysdeps/unix/sysv/linux/aarch64/gettimeofday.c
++++ b/sysdeps/unix/sysv/linux/aarch64/gettimeofday.c
+@@ -16,5 +16,5 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#define USE_IFUNC_GETTIMEOFDAY
++/* #define USE_IFUNC_GETTIMEOFDAY */
+ #include <sysdeps/unix/sysv/linux/gettimeofday.c>
+diff --git a/sysdeps/unix/sysv/linux/dl-sysdep.h b/sysdeps/unix/sysv/linux/dl-sysdep.h
+index 8ed45503e7..de8182719e 100644
+--- a/sysdeps/unix/sysv/linux/dl-sysdep.h
++++ b/sysdeps/unix/sysv/linux/dl-sysdep.h
+@@ -23,7 +23,7 @@
+    machines, we should look at it for unwind information even if
+    we aren't making direct use of it.  So enable this across the board.  */
+ 
+-#define NEED_DL_SYSINFO_DSO	1
++#define NEED_DL_SYSINFO_DSO	0
+ 
+ 
+ #ifndef __ASSEMBLER__
+diff --git a/sysdeps/unix/sysv/linux/x86/gettimeofday.c b/sysdeps/unix/sysv/linux/x86/gettimeofday.c
+index 1b7aa880a2..361f09ff8a 100644
+--- a/sysdeps/unix/sysv/linux/x86/gettimeofday.c
++++ b/sysdeps/unix/sysv/linux/x86/gettimeofday.c
+@@ -16,5 +16,5 @@
+    License along with the GNU C Library; if not, see
+    <https://www.gnu.org/licenses/>.  */
+ 
+-#define USE_IFUNC_GETTIMEOFDAY
++/* #define USE_IFUNC_GETTIMEOFDAY */
+ #include <sysdeps/unix/sysv/linux/gettimeofday.c>
+diff --git a/sysdeps/unix/sysv/linux/x86_64/sysdep.h b/sysdeps/unix/sysv/linux/x86_64/sysdep.h
+index c7f740a1df..015cc95b4b 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/sysdep.h
++++ b/sysdeps/unix/sysv/linux/x86_64/sysdep.h
+@@ -420,9 +420,10 @@
+ 
+ #endif	/* __ASSEMBLER__ */
+ 
+-
+ /* Pointer mangling support.  */
+-#if IS_IN (rtld)
++#if (IS_IN (rtld) \
++     || (!defined SHARED && (IS_IN (libc) \
++			     || IS_IN (libpthread))))
+ /* We cannot use the thread descriptor because in ld.so we use setjmp
+    earlier than the descriptor is initialized.  */
+ # ifdef __ASSEMBLER__
+@@ -431,32 +432,34 @@
+ #  define PTR_DEMANGLE(reg)	ror $2*LP_SIZE+1, reg;			     \
+ 				xor __pointer_chk_guard_local(%rip), reg
+ # else
+-#  define PTR_MANGLE(reg)	asm ("xor __pointer_chk_guard_local(%%rip), %0\n" \
+-				     "rol $2*" LP_SIZE "+1, %0"			  \
+-				     : "=r" (reg) : "0" (reg))
+-#  define PTR_DEMANGLE(reg)	asm ("ror $2*" LP_SIZE "+1, %0\n"		  \
+-				     "xor __pointer_chk_guard_local(%%rip), %0"   \
+-				     : "=r" (reg) : "0" (reg))
++extern uintptr_t __pointer_chk_guard_local attribute_relro attribute_hidden;
++#  define PTR_MANGLE(reg)						     \
++	asm ("xor __pointer_chk_guard_local(%%rip), %0\n"		     \
++	     "rol $2*" LP_SIZE "+1, %0"					     \
++	     : "=r" (reg) : "0" (reg))
++#  define PTR_DEMANGLE(reg)	\
++	asm ("ror $2*" LP_SIZE "+1, %0\n"				     \
++	     "xor __pointer_chk_guard_local(%%rip), %0"			     \
++	     : "=r" (reg) : "0" (reg))
+ # endif
+ #else
+ # ifdef __ASSEMBLER__
+-#  define PTR_MANGLE(reg)	xor %fs:POINTER_GUARD, reg;		      \
++#  define PTR_MANGLE(reg)	xor __pointer_chk_guard@GOTPCREL(%rip), reg; \
+ 				rol $2*LP_SIZE+1, reg
+-#  define PTR_DEMANGLE(reg)	ror $2*LP_SIZE+1, reg;			      \
+-				xor %fs:POINTER_GUARD, reg
++#  define PTR_DEMANGLE(reg)	ror $2*LP_SIZE+1, reg;			     \
++				xor __pointer_chk_guard@GOTPCREL(%rip), reg
+ # else
+-#  define PTR_MANGLE(var)	asm ("xor %%fs:%c2, %0\n"		      \
+-				     "rol $2*" LP_SIZE "+1, %0"		      \
+-				     : "=r" (var)			      \
+-				     : "0" (var),			      \
+-				       "i" (offsetof (tcbhead_t,	      \
+-						      pointer_guard)))
+-#  define PTR_DEMANGLE(var)	asm ("ror $2*" LP_SIZE "+1, %0\n"	      \
+-				     "xor %%fs:%c2, %0"			      \
+-				     : "=r" (var)			      \
+-				     : "0" (var),			      \
+-				       "i" (offsetof (tcbhead_t,	      \
+-						      pointer_guard)))
++//extern uintptr_t __pointer_chk_guard attribute_relro;
++#  define PTR_MANGLE(var)						     \
++	asm ("xor __pointer_chk_guard@GOTPCREL(%%rip), %0\n"		     \
++	     "rol $2*" LP_SIZE "+1, %0"					     \
++	     : "=r" (var)						     \
++	     : "0" (var))
++#  define PTR_DEMANGLE(var)						     \
++	asm ("ror $2*" LP_SIZE "+1, %0\n"				     \
++	     "xor __pointer_chk_guard@GOTPCREL(%%rip), %0"		     \
++	     : "=r" (var)						     \
++	     : "0" (var))
+ # endif
+ #endif
+ 
+diff --git a/sysdeps/x86/atomic-machine.h b/sysdeps/x86/atomic-machine.h
+index bb49648374..c2b4bb361e 100644
+--- a/sysdeps/x86/atomic-machine.h
++++ b/sysdeps/x86/atomic-machine.h
+@@ -88,7 +88,7 @@ typedef uintmax_t uatomic_max_t;
+ 		       "0:\tcmpxchgb %b2, %1"				      \
+ 		       : "=a" (ret), "=m" (*mem)			      \
+ 		       : BR_CONSTRAINT (newval), "m" (*mem), "0" (oldval),    \
+-			 "i" (offsetof (tcbhead_t, multiple_threads)));	      \
++			 "i" (offsetof (struct pthread, header.multiple_threads)));	      \
+      ret; })
+ 
+ #define __arch_c_compare_and_exchange_val_16_acq(mem, newval, oldval) \
+@@ -99,7 +99,7 @@ typedef uintmax_t uatomic_max_t;
+ 		       "0:\tcmpxchgw %w2, %1"				      \
+ 		       : "=a" (ret), "=m" (*mem)			      \
+ 		       : BR_CONSTRAINT (newval), "m" (*mem), "0" (oldval),    \
+-			 "i" (offsetof (tcbhead_t, multiple_threads)));	      \
++			 "i" (offsetof (struct pthread, header.multiple_threads)));	      \
+      ret; })
+ 
+ #define __arch_c_compare_and_exchange_val_32_acq(mem, newval, oldval) \
+@@ -110,7 +110,7 @@ typedef uintmax_t uatomic_max_t;
+ 		       "0:\tcmpxchgl %2, %1"				      \
+ 		       : "=a" (ret), "=m" (*mem)			      \
+ 		       : BR_CONSTRAINT (newval), "m" (*mem), "0" (oldval),    \
+-			 "i" (offsetof (tcbhead_t, multiple_threads)));       \
++			 "i" (offsetof (struct pthread, header.multiple_threads)));       \
+      ret; })
+ 
+ #ifdef __x86_64__
+@@ -124,7 +124,7 @@ typedef uintmax_t uatomic_max_t;
+ 		       : "q" ((atomic64_t) cast_to_integer (newval)),	      \
+ 			 "m" (*mem),					      \
+ 			 "0" ((atomic64_t) cast_to_integer (oldval)),	      \
+-			 "i" (offsetof (tcbhead_t, multiple_threads)));	      \
++		       "i" (offsetof (struct pthread, header.multiple_threads)));		\
+      ret; })
+ # define do_exchange_and_add_val_64_acq(pfx, mem, value) 0
+ # define do_add_val_64_acq(pfx, mem, value) do { } while (0)
+@@ -210,23 +210,23 @@ typedef uintmax_t uatomic_max_t;
+        __asm __volatile (lock "xaddb %b0, %1"				      \
+ 			 : "=q" (__result), "=m" (*mem)			      \
+ 			 : "0" (__addval), "m" (*mem),			      \
+-			   "i" (offsetof (tcbhead_t, multiple_threads)));     \
++			   "i" (offsetof (struct pthread, header.multiple_threads)));     \
+      else if (sizeof (*mem) == 2)					      \
+        __asm __volatile (lock "xaddw %w0, %1"				      \
+ 			 : "=r" (__result), "=m" (*mem)			      \
+ 			 : "0" (__addval), "m" (*mem),			      \
+-			   "i" (offsetof (tcbhead_t, multiple_threads)));     \
++			   "i" (offsetof (struct pthread, header.multiple_threads)));     \
+      else if (sizeof (*mem) == 4)					      \
+        __asm __volatile (lock "xaddl %0, %1"				      \
+ 			 : "=r" (__result), "=m" (*mem)			      \
+ 			 : "0" (__addval), "m" (*mem),			      \
+-			   "i" (offsetof (tcbhead_t, multiple_threads)));     \
++			   "i" (offsetof (struct pthread, header.multiple_threads)));     \
+      else if (__HAVE_64B_ATOMICS)					      \
+        __asm __volatile (lock "xaddq %q0, %1"				      \
+ 			 : "=r" (__result), "=m" (*mem)			      \
+ 			 : "0" ((atomic64_t) cast_to_integer (__addval)),     \
+ 			   "m" (*mem),					      \
+-			   "i" (offsetof (tcbhead_t, multiple_threads)));     \
++			   "i" (offsetof (struct pthread, header.multiple_threads)));     \
+      else								      \
+        __result = do_exchange_and_add_val_64_acq (pfx, (mem), __addval);      \
+      __result; })
+@@ -252,23 +252,23 @@ typedef uintmax_t uatomic_max_t;
+       __asm __volatile (lock "addb %b1, %0"				      \
+ 			: "=m" (*mem)					      \
+ 			: IBR_CONSTRAINT (value), "m" (*mem),		      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (sizeof (*mem) == 2)					      \
+       __asm __volatile (lock "addw %w1, %0"				      \
+ 			: "=m" (*mem)					      \
+ 			: "ir" (value), "m" (*mem),			      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (sizeof (*mem) == 4)					      \
+       __asm __volatile (lock "addl %1, %0"				      \
+ 			: "=m" (*mem)					      \
+ 			: "ir" (value), "m" (*mem),			      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (__HAVE_64B_ATOMICS)					      \
+       __asm __volatile (lock "addq %q1, %0"				      \
+ 			: "=m" (*mem)					      \
+ 			: "ir" ((atomic64_t) cast_to_integer (value)),	      \
+ 			  "m" (*mem),					      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else								      \
+       do_add_val_64_acq (apfx, (mem), (value));				      \
+   } while (0)
+@@ -337,22 +337,22 @@ typedef uintmax_t uatomic_max_t;
+       __asm __volatile (lock "incb %b0"					      \
+ 			: "=m" (*mem)					      \
+ 			: "m" (*mem),					      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (sizeof (*mem) == 2)					      \
+       __asm __volatile (lock "incw %w0"					      \
+ 			: "=m" (*mem)					      \
+ 			: "m" (*mem),					      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (sizeof (*mem) == 4)					      \
+       __asm __volatile (lock "incl %0"					      \
+ 			: "=m" (*mem)					      \
+ 			: "m" (*mem),					      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (__HAVE_64B_ATOMICS)					      \
+       __asm __volatile (lock "incq %q0"					      \
+ 			: "=m" (*mem)					      \
+ 			: "m" (*mem),					      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else								      \
+       do_add_val_64_acq (pfx, mem, 1);					      \
+   } while (0)
+@@ -395,22 +395,22 @@ typedef uintmax_t uatomic_max_t;
+       __asm __volatile (lock "decb %b0"					      \
+ 			: "=m" (*mem)					      \
+ 			: "m" (*mem),					      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (sizeof (*mem) == 2)					      \
+       __asm __volatile (lock "decw %w0"					      \
+ 			: "=m" (*mem)					      \
+ 			: "m" (*mem),					      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (sizeof (*mem) == 4)					      \
+       __asm __volatile (lock "decl %0"					      \
+ 			: "=m" (*mem)					      \
+ 			: "m" (*mem),					      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (__HAVE_64B_ATOMICS)					      \
+       __asm __volatile (lock "decq %q0"					      \
+ 			: "=m" (*mem)					      \
+ 			: "m" (*mem),					      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else								      \
+       do_add_val_64_acq (pfx, mem, -1);					      \
+   } while (0)
+@@ -501,22 +501,22 @@ typedef uintmax_t uatomic_max_t;
+       __asm __volatile (lock "andb %b1, %0"				      \
+ 			: "=m" (*mem)					      \
+ 			: IBR_CONSTRAINT (mask), "m" (*mem),		      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (sizeof (*mem) == 2)					      \
+       __asm __volatile (lock "andw %w1, %0"				      \
+ 			: "=m" (*mem)					      \
+ 			: "ir" (mask), "m" (*mem),			      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (sizeof (*mem) == 4)					      \
+       __asm __volatile (lock "andl %1, %0"				      \
+ 			: "=m" (*mem)					      \
+ 			: "ir" (mask), "m" (*mem),			      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (__HAVE_64B_ATOMICS)					      \
+       __asm __volatile (lock "andq %q1, %0"				      \
+ 			: "=m" (*mem)					      \
+ 			: "ir" (mask), "m" (*mem),			      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else								      \
+       __atomic_link_error ();						      \
+   } while (0)
+@@ -535,22 +535,22 @@ typedef uintmax_t uatomic_max_t;
+       __asm __volatile (lock "orb %b1, %0"				      \
+ 			: "=m" (*mem)					      \
+ 			: IBR_CONSTRAINT (mask), "m" (*mem),		      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (sizeof (*mem) == 2)					      \
+       __asm __volatile (lock "orw %w1, %0"				      \
+ 			: "=m" (*mem)					      \
+ 			: "ir" (mask), "m" (*mem),			      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (sizeof (*mem) == 4)					      \
+       __asm __volatile (lock "orl %1, %0"				      \
+ 			: "=m" (*mem)					      \
+ 			: "ir" (mask), "m" (*mem),			      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else if (__HAVE_64B_ATOMICS)					      \
+       __asm __volatile (lock "orq %q1, %0"				      \
+ 			: "=m" (*mem)					      \
+ 			: "ir" (mask), "m" (*mem),			      \
+-			  "i" (offsetof (tcbhead_t, multiple_threads)));      \
++			  "i" (offsetof (struct pthread, header.multiple_threads)));      \
+     else								      \
+       __atomic_link_error ();						      \
+   } while (0)
+diff --git a/sysdeps/x86_64/dl-machine.h b/sysdeps/x86_64/dl-machine.h
+index 74029871d8..0d9c9e28e0 100644
+--- a/sysdeps/x86_64/dl-machine.h
++++ b/sysdeps/x86_64/dl-machine.h
+@@ -44,6 +44,7 @@ elf_machine_dynamic (void)
+ {
+   /* This produces an IP-relative reloc which is resolved at link time. */
+   extern const ElfW(Addr) _GLOBAL_OFFSET_TABLE_[] attribute_hidden;
++  //_dl_debug_printf ("_GLOBAL_OFFSET_TABLE = %lx\n", _GLOBAL_OFFSET_TABLE_ [0]);
+   return _GLOBAL_OFFSET_TABLE_[0];
+ }
+ 
+@@ -56,6 +57,7 @@ elf_machine_load_address (void)
+      by an IP-relative reference, and the link-time address found in the
+      special unrelocated first GOT entry.  */
+   extern ElfW(Dyn) _DYNAMIC[] attribute_hidden;
++  //_dl_debug_printf ("_DYNAMIC = %lx\n", &_DYNAMIC);
+   return (ElfW(Addr)) &_DYNAMIC - elf_machine_dynamic ();
+ }
+ 
+@@ -145,6 +147,8 @@ elf_machine_runtime_setup (struct link_map *l, int lazy, int profile)
+ .globl _dl_start_user\n\
+ _start:\n\
+ 	movq %rsp, %rdi\n\
++	# Save %rbp is case ld-linux is being reloaded.\n\
++	movq %rbp, %r15\n\
+ 	call _dl_start\n\
+ _dl_start_user:\n\
+ 	# Save the user entry point address in %r12.\n\
+@@ -181,6 +185,8 @@ _dl_start_user:\n\
+ 	leaq _dl_fini(%rip), %rdx\n\
+ 	# And make sure %rsp points to argc stored on the stack.\n\
+ 	movq %r13, %rsp\n\
++	# Restore %rbp\n\
++	movq %r15, %rbp\n\
+ 	# Jump to the user's entry point.\n\
+ 	jmp *%r12\n\
+ .previous\n\
+@@ -440,9 +446,14 @@ and creates an unsatisfiable circular dependency.\n",
+ #  endif
+ 	      /* We know the offset of the object the symbol is contained in.
+ 		 It is a negative value which will be added to the
+-		 thread pointer.  */
++		 thread pointer. It is a positive value to static TLS
++		 layout 3.  */
+ 	      value = (sym->st_value + reloc->r_addend
+-		       - sym_map->l_tls_offset);
++		       + sym_map->l_tls_offset);
++
++//	      _dl_debug_printf ("%s: value = %lx, st_value = %lx, r_addend = %lx, l_tls_offset = %lx\n",
++//				__FUNCTION__, value, sym->st_value, reloc->r_addend,
++//				sym_map->l_tls_offset);
+ #  ifdef __ILP32__
+ 	      /* The symbol and addend values are 32 bits but the GOT
+ 		 entry is 64 bits wide and the whole 64-bit entry is used
+diff --git a/sysdeps/x86_64/nptl/tcb-offsets.sym b/sysdeps/x86_64/nptl/tcb-offsets.sym
+index ae8034743b..144a381394 100644
+--- a/sysdeps/x86_64/nptl/tcb-offsets.sym
++++ b/sysdeps/x86_64/nptl/tcb-offsets.sym
+@@ -9,12 +9,13 @@ CLEANUP_JMP_BUF		offsetof (struct pthread, cleanup_jmp_buf)
+ CLEANUP			offsetof (struct pthread, cleanup)
+ CLEANUP_PREV		offsetof (struct _pthread_cleanup_buffer, __prev)
+ MUTEX_FUTEX		offsetof (pthread_mutex_t, __data.__lock)
+-MULTIPLE_THREADS_OFFSET	offsetof (tcbhead_t, multiple_threads)
+-POINTER_GUARD		offsetof (tcbhead_t, pointer_guard)
+-VGETCPU_CACHE_OFFSET	offsetof (tcbhead_t, vgetcpu_cache)
+-FEATURE_1_OFFSET	offsetof (tcbhead_t, feature_1)
+-SSP_BASE_OFFSET		offsetof (tcbhead_t, ssp_base)
++MULTIPLE_THREADS_OFFSET	offsetof (struct pthread, header.multiple_threads)
++POINTER_GUARD		offsetof (struct pthread, header.pointer_guard)
++VGETCPU_CACHE_OFFSET	offsetof (struct pthread, header.vgetcpu_cache)
++FEATURE_1_OFFSET	offsetof (struct pthread, header.feature_1)
++SSP_BASE_OFFSET		0x28
+ 
++-- SSP_BASE_OFFSET is derived from the native glibc build
+ -- Not strictly offsets, but these values are also used in the TCB.
+ TCB_CANCELSTATE_BITMASK	 CANCELSTATE_BITMASK
+ TCB_CANCELTYPE_BITMASK	 CANCELTYPE_BITMASK
+diff --git a/sysdeps/x86_64/nptl/tls.h b/sysdeps/x86_64/nptl/tls.h
+index e7c1416eec..d9d7205047 100644
+--- a/sysdeps/x86_64/nptl/tls.h
++++ b/sysdeps/x86_64/nptl/tls.h
+@@ -29,67 +29,16 @@
+ # include <libc-pointer-arith.h> /* For cast_to_integer.  */
+ # include <kernel-features.h>
+ # include <dl-dtv.h>
+-
+-/* Replacement type for __m128 since this file is included by ld.so,
+-   which is compiled with -mno-sse.  It must not change the alignment
+-   of rtld_savespace_sse.  */
+-typedef struct
+-{
+-  int i[4];
+-} __128bits;
+-
+-
+-typedef struct
+-{
+-  void *tcb;		/* Pointer to the TCB.  Not necessarily the
+-			   thread descriptor used by libpthread.  */
+-  dtv_t *dtv;
+-  void *self;		/* Pointer to the thread descriptor.  */
+-  int multiple_threads;
+-  int gscope_flag;
+-  uintptr_t sysinfo;
+-  uintptr_t stack_guard;
+-  uintptr_t pointer_guard;
+-  unsigned long int vgetcpu_cache[2];
+-  /* Bit 0: X86_FEATURE_1_IBT.
+-     Bit 1: X86_FEATURE_1_SHSTK.
+-   */
+-  unsigned int feature_1;
+-  int __glibc_unused1;
+-  /* Reservation of some values for the TM ABI.  */
+-  void *__private_tm[4];
+-  /* GCC split stack support.  */
+-  void *__private_ss;
+-  /* The lowest address of shadow stack,  */
+-  unsigned long long int ssp_base;
+-  /* Must be kept even if it is no longer used by glibc since programs,
+-     like AddressSanitizer, depend on the size of tcbhead_t.  */
+-  __128bits __glibc_unused2[8][4] __attribute__ ((aligned (32)));
+-
+-  void *__padding[8];
+-} tcbhead_t;
+-
+-# ifdef __ILP32__
+-/* morestack.S in libgcc uses offset 0x40 to access __private_ss,   */
+-_Static_assert (offsetof (tcbhead_t, __private_ss) == 0x40,
+-		"offset of __private_ss != 0x40");
+-/* NB: ssp_base used to be "long int __glibc_reserved2", which was
+-   changed from 32 bits to 64 bits.  Make sure that the offset of the
+-   next field, __glibc_unused2, is unchanged.  */
+-_Static_assert (offsetof (tcbhead_t, __glibc_unused2) == 0x60,
+-		"offset of __glibc_unused2 != 0x60");
+-# else
+-/* morestack.S in libgcc uses offset 0x70 to access __private_ss,   */
+-_Static_assert (offsetof (tcbhead_t, __private_ss) == 0x70,
+-		"offset of __private_ss != 0x70");
+-_Static_assert (offsetof (tcbhead_t, __glibc_unused2) == 0x80,
+-		"offset of __glibc_unused2 != 0x80");
+-# endif
++# include <nptl/descr.h>
++# include <elf/dl-popcorn.h>
+ 
+ #else /* __ASSEMBLER__ */
+ # include <tcb-offsets.h>
+ #endif
+ 
++#ifndef PCN_HETEROGENEOUS
++#define PCN_HETEROGENEOUS
++#endif
+ 
+ /* Alignment requirement for the stack.  */
+ #define STACK_ALIGN	16
+@@ -107,43 +56,51 @@ _Static_assert (offsetof (tcbhead_t, __glibc_unused2) == 0x80,
+ # endif
+ #endif
+ 
+-/* This is the size of the initial TCB.  Can't be just sizeof (tcbhead_t),
+-   because NPTL getpid, __libc_alloca_cutoff etc. need (almost) the whole
+-   struct pthread even when not linked with -lpthread.  */
+-# define TLS_INIT_TCB_SIZE sizeof (struct pthread)
++/* The TCB can have any size and the memory following the address the
++   thread pointer points to is unspecified.  Allocate the TCB there.  */
++# define TLS_TCB_AT_TP	0
++# define TLS_DTV_AT_TP	1
++
++/* Get the thread descriptor definition.  */
++# include <nptl/descr.h>
++
++typedef struct
++{
++  void *private;
++  dtv_t *dtv;
++} tcbhead_t;
++
++/* This is the size of the initial TCB.  */
++# define TLS_INIT_TCB_SIZE	sizeof (tcbhead_t)
+ 
+ /* Alignment requirements for the initial TCB.  */
+-# define TLS_INIT_TCB_ALIGN __alignof__ (struct pthread)
++# define TLS_INIT_TCB_ALIGN	__alignof__ (struct pthread)
+ 
+ /* This is the size of the TCB.  */
+-# define TLS_TCB_SIZE sizeof (struct pthread)
++# define TLS_TCB_SIZE		sizeof (tcbhead_t)
+ 
+-/* Alignment requirements for the TCB.  */
+-# define TLS_TCB_ALIGN __alignof__ (struct pthread)
+-
+-/* The TCB can have any size and the memory following the address the
+-   thread pointer points to is unspecified.  Allocate the TCB there.  */
+-# define TLS_TCB_AT_TP	1
+-# define TLS_DTV_AT_TP	0
++/* This is the size we need before TCB.  */
++# define TLS_PRE_TCB_SIZE	sizeof (struct pthread)
+ 
+-/* Get the thread descriptor definition.  */
+-# include <nptl/descr.h>
++/* Alignment requirements for the TCB.  */
++# define TLS_TCB_ALIGN		__alignof__ (struct pthread)
+ 
++/* Popcorn Linux Padding.  Necessary to maintain compatiblity shared
++   libraries that expect SSP_BASE_OFFSET to be inside tcbhead_t.  */
++# define TLS_TCB_PCN_PAD	0x40
+ 
+ /* Install the dtv pointer.  The pointer passed is to the element with
+    index -1 which contain the length.  */
+-# define INSTALL_DTV(descr, dtvp) \
+-  ((tcbhead_t *) (descr))->dtv = (dtvp) + 1
++# define INSTALL_DTV(tcbp, dtvp) \
++  (((tcbhead_t *) (tcbp))->dtv = (dtvp) + 1)
+ 
+ /* Install new dtv for current thread.  */
+-# define INSTALL_NEW_DTV(dtvp) \
+-  ({ struct pthread *__pd;						      \
+-     THREAD_SETMEM (__pd, header.dtv, (dtvp)); })
++# define INSTALL_NEW_DTV(dtv) \
++  ({tcbhead_t *tcb = GET_TP; tcb->dtv = dtv;})
+ 
+ /* Return dtv of given thread descriptor.  */
+-# define GET_DTV(descr) \
+-  (((tcbhead_t *) (descr))->dtv)
+-
++# define GET_DTV(tcbp) \
++  (((tcbhead_t *) (tcbp))->dtv)
+ 
+ /* Code to initially initialize the thread pointer.  This might need
+    special attention since 'errno' is not yet available and if the
+@@ -152,13 +109,10 @@ _Static_assert (offsetof (tcbhead_t, __glibc_unused2) == 0x80,
+    We have to make the syscall for both uses of the macro since the
+    address might be (and probably is) different.  */
+ # define TLS_INIT_TP(thrdescr) \
+-  ({ void *_thrdescr = (thrdescr);					      \
+-     tcbhead_t *_head = _thrdescr;					      \
++  ({ tcbhead_t *_thrdescr = (thrdescr);					      \
+      int _result;							      \
+ 									      \
+-     _head->tcb = _thrdescr;						      \
+-     /* For now the thread descriptor is at the same address.  */	      \
+-     _head->self = _thrdescr;						      \
++     _thrdescr->private = (thrdescr);					      \
+ 									      \
+      /* It is a simple syscall to set the %fs value for the thread.  */	      \
+      asm volatile ("syscall"						      \
+@@ -171,14 +125,14 @@ _Static_assert (offsetof (tcbhead_t, __glibc_unused2) == 0x80,
+     _result ? "cannot set %fs base address for thread-local storage" : 0;     \
+   })
+ 
+-# define TLS_DEFINE_INIT_TP(tp, pd) void *tp = (pd)
+-
++/* Value passed to 'clone' for initialization of the thread register.  */
++# define TLS_DEFINE_INIT_TP(tp, pd) void *tp = (pd) + 1
+ 
+ /* Return the address of the dtv for the current thread.  */
+-# define THREAD_DTV() \
+-  ({ struct pthread *__pd;						      \
+-     THREAD_GETMEM (__pd, header.dtv); })
+-
++# define THREAD_DTV()							     \
++  ({ dtv_t *__dtv;							     \
++     asm volatile ("mov %%fs:8, %0" : "=r" (__dtv));			     \
++     __dtv; })
+ 
+ /* Return the thread descriptor for the current thread.
+ 
+@@ -187,66 +141,40 @@ _Static_assert (offsetof (tcbhead_t, __glibc_unused2) == 0x80,
+ 	pthread_descr self = thread_self();
+    do not get optimized away.  */
+ # define THREAD_SELF \
+-  ({ struct pthread *__self;						      \
+-     asm ("mov %%fs:%c1,%0" : "=r" (__self)				      \
+-	  : "i" (offsetof (struct pthread, header.self)));	 	      \
+-     __self;})
++  ({ struct pthread *__self;						     \
++     asm volatile ("mov %%fs:0, %0": "=r" (__self));			     \
++     __self - 1; })
++
++# define GET_TP \
++  ({ void *tp;								      \
++     int _result;							      \
++									      \
++     /* It is a simple syscall to set the %fs value for the thread.  */	      \
++     asm volatile ("syscall"						      \
++		   : "=a" (_result)					      \
++		   : "0" ((unsigned long int) __NR_arch_prctl),		      \
++		     "D" ((unsigned long int) ARCH_GET_FS),		      \
++		     "S" (&tp)						      \
++		   : "memory", "cc", "r11", "cx");			      \
++									      \
++    _result ? "cannot set %fs base address for thread-local storage" : 0;     \
++    tp;									      \
++  })
++
+ 
+ /* Magic for libthread_db to know how to do THREAD_SELF.  */
+ # define DB_THREAD_SELF_INCLUDE  <sys/reg.h> /* For the FS constant.  */
+ # define DB_THREAD_SELF CONST_THREAD_AREA (64, FS)
+ 
+-/* Read member of the thread descriptor directly.  */
++/* Access to data in the thread descriptor is easy.  */
+ # define THREAD_GETMEM(descr, member) \
+-  ({ __typeof (descr->member) __value;					      \
+-     if (sizeof (__value) == 1)						      \
+-       asm volatile ("movb %%fs:%P2,%b0"				      \
+-		     : "=q" (__value)					      \
+-		     : "0" (0), "i" (offsetof (struct pthread, member)));     \
+-     else if (sizeof (__value) == 4)					      \
+-       asm volatile ("movl %%fs:%P1,%0"					      \
+-		     : "=r" (__value)					      \
+-		     : "i" (offsetof (struct pthread, member)));	      \
+-     else								      \
+-       {								      \
+-	 if (sizeof (__value) != 8)					      \
+-	   /* There should not be any value with a size other than 1,	      \
+-	      4 or 8.  */						      \
+-	   abort ();							      \
+-									      \
+-	 asm volatile ("movq %%fs:%P1,%q0"				      \
+-		       : "=r" (__value)					      \
+-		       : "i" (offsetof (struct pthread, member)));	      \
+-       }								      \
+-     __value; })
+-
+-
+-/* Same as THREAD_GETMEM, but the member offset can be non-constant.  */
++  descr->member
+ # define THREAD_GETMEM_NC(descr, member, idx) \
+-  ({ __typeof (descr->member[0]) __value;				      \
+-     if (sizeof (__value) == 1)						      \
+-       asm volatile ("movb %%fs:%P2(%q3),%b0"				      \
+-		     : "=q" (__value)					      \
+-		     : "0" (0), "i" (offsetof (struct pthread, member[0])),   \
+-		       "r" (idx));					      \
+-     else if (sizeof (__value) == 4)					      \
+-       asm volatile ("movl %%fs:%P1(,%q2,4),%0"				      \
+-		     : "=r" (__value)					      \
+-		     : "i" (offsetof (struct pthread, member[0])), "r" (idx));\
+-     else								      \
+-       {								      \
+-	 if (sizeof (__value) != 8)					      \
+-	   /* There should not be any value with a size other than 1,	      \
+-	      4 or 8.  */						      \
+-	   abort ();							      \
+-									      \
+-	 asm volatile ("movq %%fs:%P1(,%q2,8),%q0"			      \
+-		       : "=r" (__value)					      \
+-		       : "i" (offsetof (struct pthread, member[0])),	      \
+-			 "r" (idx));					      \
+-       }								      \
+-     __value; })
+-
++  descr->member[idx]
++# define THREAD_SETMEM(descr, member, value) \
++  descr->member = (value)
++# define THREAD_SETMEM_NC(descr, member, idx, value) \
++  descr->member[idx] = (value)
+ 
+ /* Loading addresses of objects on x86-64 needs to be treated special
+    when generating PIC code.  */
+@@ -256,56 +184,8 @@ _Static_assert (offsetof (tcbhead_t, __glibc_unused2) == 0x80,
+ # define IMM_MODE "ir"
+ #endif
+ 
+-
+-/* Set member of the thread descriptor directly.  */
+-# define THREAD_SETMEM(descr, member, value) \
+-  ({ if (sizeof (descr->member) == 1)					      \
+-       asm volatile ("movb %b0,%%fs:%P1" :				      \
+-		     : "iq" (value),					      \
+-		       "i" (offsetof (struct pthread, member)));	      \
+-     else if (sizeof (descr->member) == 4)				      \
+-       asm volatile ("movl %0,%%fs:%P1" :				      \
+-		     : IMM_MODE (value),				      \
+-		       "i" (offsetof (struct pthread, member)));	      \
+-     else								      \
+-       {								      \
+-	 if (sizeof (descr->member) != 8)				      \
+-	   /* There should not be any value with a size other than 1,	      \
+-	      4 or 8.  */						      \
+-	   abort ();							      \
+-									      \
+-	 asm volatile ("movq %q0,%%fs:%P1" :				      \
+-		       : IMM_MODE ((uint64_t) cast_to_integer (value)),	      \
+-			 "i" (offsetof (struct pthread, member)));	      \
+-       }})
+-
+-
+-/* Same as THREAD_SETMEM, but the member offset can be non-constant.  */
+-# define THREAD_SETMEM_NC(descr, member, idx, value) \
+-  ({ if (sizeof (descr->member[0]) == 1)				      \
+-       asm volatile ("movb %b0,%%fs:%P1(%q2)" :				      \
+-		     : "iq" (value),					      \
+-		       "i" (offsetof (struct pthread, member[0])),	      \
+-		       "r" (idx));					      \
+-     else if (sizeof (descr->member[0]) == 4)				      \
+-       asm volatile ("movl %0,%%fs:%P1(,%q2,4)" :			      \
+-		     : IMM_MODE (value),				      \
+-		       "i" (offsetof (struct pthread, member[0])),	      \
+-		       "r" (idx));					      \
+-     else								      \
+-       {								      \
+-	 if (sizeof (descr->member[0]) != 8)				      \
+-	   /* There should not be any value with a size other than 1,	      \
+-	      4 or 8.  */						      \
+-	   abort ();							      \
+-									      \
+-	 asm volatile ("movq %q0,%%fs:%P1(,%q2,8)" :			      \
+-		       : IMM_MODE ((uint64_t) cast_to_integer (value)),	      \
+-			 "i" (offsetof (struct pthread, member[0])),	      \
+-			 "r" (idx));					      \
+-       }})
+-
+-
++/* Disable STACK_GUARD and POINTER_GUARD for heterogeneous computing.  */
++#ifndef PCN_HETEROGENEOUS
+ /* Set the stack guard field in TCB head.  */
+ # define THREAD_SET_STACK_GUARD(value) \
+     THREAD_SETMEM (THREAD_SELF, header.stack_guard, value)
+@@ -320,7 +200,7 @@ _Static_assert (offsetof (tcbhead_t, __glibc_unused2) == 0x80,
+ # define THREAD_COPY_POINTER_GUARD(descr) \
+   ((descr)->header.pointer_guard					      \
+    = THREAD_GETMEM (THREAD_SELF, header.pointer_guard))
+-
++#endif
+ 
+ /* Get and set the global scope generation counter in the TCB head.  */
+ # define THREAD_GSCOPE_IN_TCB      1
+@@ -329,13 +209,11 @@ _Static_assert (offsetof (tcbhead_t, __glibc_unused2) == 0x80,
+ # define THREAD_GSCOPE_FLAG_WAIT   2
+ # define THREAD_GSCOPE_RESET_FLAG() \
+   do									      \
+-    { int __res;							      \
+-      asm volatile ("xchgl %0, %%fs:%P1"				      \
+-		    : "=r" (__res)					      \
+-		    : "i" (offsetof (struct pthread, header.gscope_flag)),    \
+-		      "0" (THREAD_GSCOPE_FLAG_UNUSED));			      \
+-      if (__res == THREAD_GSCOPE_FLAG_WAIT)				      \
+-	lll_futex_wake (&THREAD_SELF->header.gscope_flag, 1, LLL_PRIVATE);    \
++    { int __res								     \
++	= atomic_exchange_rel (&THREAD_SELF->header.gscope_flag,	     \
++			       THREAD_GSCOPE_FLAG_UNUSED);		     \
++      if (__res == THREAD_GSCOPE_FLAG_WAIT)				     \
++	lll_futex_wake (&THREAD_SELF->header.gscope_flag, 1, LLL_PRIVATE);   \
+     }									      \
+   while (0)
+ # define THREAD_GSCOPE_SET_FLAG() \
