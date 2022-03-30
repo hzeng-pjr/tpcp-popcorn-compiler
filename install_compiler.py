@@ -45,16 +45,16 @@ if (cross_dir is None):
 cross_path = os.path.dirname(os.path.dirname(cross_dir))
 
 # LLVM URL
-#llvm_url = 'https://github.com/llvm/llvm-project.git'
-llvm_url = 'file:///scratch/mirrors/llvm-project.git'
+llvm_url = 'https://github.com/llvm/llvm-project.git'
+#llvm_url = 'file:///scratch/mirrors/llvm-project.git'
 llvm_version = 9
 
 # Binutils 2.32 URL
 binutils_version = "binutils-2.34"
-#binutils_url = 'http://ftp.gnu.org/gnu/binutils/'
-binutils_url = 'file:///scratch/mirrors/' + binutils_version + '.tar.bz2'
+binutils_url = 'http://ftp.gnu.org/gnu/binutils/' + binutils_version + '.tar.bz2'
+#binutils_url = 'file:///scratch/mirrors/' + binutils_version + '.tar.bz2'
 binutils_dev = "/scratch/pjr/binutils-gdb"
-local_binutils = True
+local_binutils = False
 
 # GNU libc (glibc)
 
@@ -68,18 +68,18 @@ local_binutils = True
 # one node to glibc and another to use musl libc.
 
 glibc_version = "2.31" # Ubunut 20.04
-#glibc_url = "git://sourceware.org/git/glibc.git"
-glibc_url = "file:///scratch/mirrors/glibc.git"
+glibc_url = "git://sourceware.org/git/glibc.git"
+#glibc_url = "file:///scratch/mirrors/glibc.git"
 glibc_dev = "/scratch/pjr/glibc"
-local_glibc = True
+local_glibc = False
 
 gcc_version = "9.3.0"
-#gcc_url = "git://gcc.gnu.org/git/gcc.git"
-gcc_url = "file:///scratch/mirrors/gcc.git"
+gcc_url = "git://gcc.gnu.org/git/gcc.git"
+#gcc_url = "file:///scratch/mirrors/gcc.git"
 
 linux_version = "v5.4.169"
-#linux_url = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
-linux_url = "file:///scratch/mirrors/linux-stable.git"
+linux_url = "git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
+#linux_url = "file:///scratch/mirrors/linux-stable.git"
 
 
 #================================================

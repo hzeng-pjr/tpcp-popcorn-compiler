@@ -72,8 +72,6 @@ unload_ldso (struct mmap_entries *me)
 
   lio_close (fd);
 
-  lio_print ("Unloaded ld.so!\n");
-
   return 0;
 }
 
@@ -106,11 +104,6 @@ unload_libs ()
 	ret = unload_ldso (&pcn_data->maps[i]);
       else
 	ret = lio_munmap ((void *)me[i].start, me[i].size);
-
-      if (ret)
-	lio_printf ("munmap %u of %lu failed\n", i+1, pcn_data->num_maps);
-      else
-	lio_printf ("munmap %u of %lu success\n", i+1, pcn_data->num_maps);
     }
 }
 
@@ -138,7 +131,7 @@ load_lib (char *lib)
   unsigned long map, base;
   struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
 
-  lio_printf ("loading %s...", lib);
+  //lio_printf ("loading %s...", lib);
 
   for (i = 0; i < pcn_data->num_maps; i++)
     if (lio_strcmp (lib, pcn_data->maps[i].name) == 0)
@@ -268,7 +261,7 @@ load_lib (char *lib)
 
   lio_close (fd);
 
-  lio_print ("success!\n");
+  //lio_print ("success!\n");
 
   return (void *) (base + ehdr.e_entry);
 }
@@ -508,7 +501,7 @@ reload_segment (Elf64_Phdr *phdr, int seg, int prot, int fd, char *name)
   int filesz = phdr[seg].p_filesz;
   int offset = phdr[seg].p_offset;
   
-  lio_printf ("loading %s %lx @ %u bytes\n", name, paddr, filesz);
+  //lio_printf ("loading %s %lx @ %u bytes\n", name, paddr, filesz);
 
   lio_mprotect (paddr, filesz, (PROT_READ | PROT_WRITE));
   lio_pread (fd, paddr, filesz, offset);
