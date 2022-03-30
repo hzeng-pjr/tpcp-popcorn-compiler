@@ -1,0 +1,378 @@
+diff --git a/bfd/elf64-x86-64.c b/bfd/elf64-x86-64.c
+index 79e68ff4767..c310981f170 100644
+--- a/bfd/elf64-x86-64.c
++++ b/bfd/elf64-x86-64.c
+@@ -2343,11 +2343,41 @@ error_return:
+   return FALSE;
+ }
+ 
++static bfd_vma popcorn_vma_offset (struct bfd_link_info *info,
++				   bfd_vma address)
++{
++  /* Popcorn: In TLS variant 3, the thread pointer points to the TCB.
++     The TCB itself consists of two machine words, a pointer to the
++     DTV and a private pointer.  All of the static module data is
++     placed above the TCB */
++  //const int tcb_size = sizeof (long) * 2;
++  const int tcb_size = 0x40;
++  struct elf_link_hash_table *htab = elf_hash_table (info);
++  bfd_vma aligned_tcb_size = 0;
++  bfd_vma tls_align;
++  bfd_vma offset = address - htab->tls_sec->vma;
++
++  /* If tls_sec is NULL, we should have signalled an error already.  */
++  if (elf_hash_table (info)->tls_sec == NULL)
++    tls_align = 0;
++  else
++    tls_align = 1 << elf_hash_table (info)->tls_sec->alignment_power;
++
++  if (tls_align != 0)
++    aligned_tcb_size = (tcb_size + tls_align - 1) &~ (tls_align - 1);
++
++//  printf ("%s: aligned_tcb = %lx, tcb_size = %lx, offset = %lx\n",
++//	  __FUNCTION__, aligned_tcb_size, tcb_size, offset);
++
++  return aligned_tcb_size + offset;
++}
++
+ /* Return the relocation value for @tpoff relocation
+    if STT_TLS virtual address is ADDRESS.  */
+ 
+ static bfd_vma
+-elf_x86_64_tpoff (struct bfd_link_info *info, bfd_vma address)
++elf_x86_64_tpoff (struct bfd_link_info *info, bfd_vma address,
++		  Elf_Internal_Rela *rel)
+ {
+   struct elf_link_hash_table *htab = elf_hash_table (info);
+   const struct elf_backend_data *bed = get_elf_backend_data (info->output_bfd);
+@@ -2359,7 +2389,17 @@ elf_x86_64_tpoff (struct bfd_link_info *info, bfd_vma address)
+ 
+   /* Consider special static TLS alignment requirements.  */
+   static_tls_size = BFD_ALIGN (htab->tls_size, bed->static_tls_alignment);
+-  return address - static_tls_size - htab->tls_sec->vma;
++//  return address - static_tls_size - htab->tls_sec->vma;
++
++//  printf ("%s: %lx -> %lx\n", __FUNCTION__,
++//	  address - static_tls_size - htab->tls_sec->vma,
++//	  popcorn_vma_offset (info, address));
++
++//  printf ("%s: address = %lx, addend = %lx, offset = %lx, (%llx / %llx)\n",
++//	  __FUNCTION__, address, rel->r_addend, rel->r_offset,
++//	  htab->tls_sec->vma, popcorn_vma_offset (info, address));
++
++  return popcorn_vma_offset (info, address);
+ }
+ 
+ /* Relocate an x86_64 ELF section.  */
+@@ -3312,6 +3352,7 @@ direct:
+ 	  if (r_type_tls == R_X86_64_TPOFF32)
+ 	    {
+ 	      bfd_vma roff = rel->r_offset;
++	      //printf ("%s: r_offset = %lx\n", __FUNCTION__, rel->r_offset);
+ 
+ 	      BFD_ASSERT (! unresolved_reloc);
+ 
+@@ -3389,7 +3430,7 @@ corrupt_input:
+ 			      15);
+ 		    }
+ 		  bfd_put_32 (output_bfd,
+-			      elf_x86_64_tpoff (info, relocation),
++			      elf_x86_64_tpoff (info, relocation, rel),
+ 			      contents + roff + 8 + largepic);
+ 		  /* Skip R_X86_64_PC32, R_X86_64_PLT32,
+ 		     R_X86_64_GOTPCRELX and R_X86_64_PLTOFF64.  */
+@@ -3418,7 +3459,7 @@ corrupt_input:
+ 		  bfd_put_8 (output_bfd, 0xc0 | ((val >> 3) & 7),
+ 			     contents + roff - 1);
+ 		  bfd_put_32 (output_bfd,
+-			      elf_x86_64_tpoff (info, relocation),
++			      elf_x86_64_tpoff (info, relocation, rel),
+ 			      contents + roff);
+ 		  continue;
+ 		}
+@@ -3532,7 +3573,7 @@ corrupt_input:
+ 				 contents + roff - 1);
+ 		    }
+ 		  bfd_put_32 (output_bfd,
+-			      elf_x86_64_tpoff (info, relocation),
++			      elf_x86_64_tpoff (info, relocation, rel),
+ 			      contents + roff);
+ 		  continue;
+ 		}
+@@ -3602,8 +3643,12 @@ corrupt_input:
+ 	      bfd_put_64 (output_bfd, 0, htab->elf.sgot->contents + off);
+ 	      outrel.r_addend = 0;
+ 	      if ((dr_type == R_X86_64_TPOFF64
+-		   || dr_type == R_X86_64_TLSDESC) && indx == 0)
++		   || dr_type == R_X86_64_TLSDESC) && indx == 0) {
+ 		outrel.r_addend = relocation - _bfd_x86_elf_dtpoff_base (info);
++		//printf ("%s: R_X86_64_TPOFF64 r_addend = %lx (ld, offset = %lx)\n",
++		//	__FUNCTION__, outrel.r_addend, outrel.r_addend,
++		//	outrel.r_offset);
++	      }
+ 	      outrel.r_info = htab->r_info (indx, dr_type);
+ 
+ 	      elf_append_rela (output_bfd, sreloc, &outrel);
+@@ -3654,6 +3699,7 @@ corrupt_input:
+ 	  else
+ 	    {
+ 	      bfd_vma roff = rel->r_offset;
++	      //printf ("%s: r_offset = %lx\n", __FUNCTION__, rel->r_offset);
+ 
+ 	      if (r_type == R_X86_64_TLSGD)
+ 		{
+@@ -3780,6 +3826,7 @@ corrupt_input:
+ 	      else
+ 		BFD_ASSERT (FALSE);
+ 	    }
++	  //printf ("%s: off = %lx\n", __FUNCTION__, off);
+ 	  break;
+ 
+ 	case R_X86_64_TLSLD:
+@@ -3909,6 +3956,7 @@ corrupt_input:
+ 	  relocation = htab->elf.sgot->output_section->vma
+ 		       + htab->elf.sgot->output_offset + off;
+ 	  unresolved_reloc = FALSE;
++	  //printf ("%s: relocation = %lx\n", __FUNCTION__, relocation);
+ 	  break;
+ 
+ 	case R_X86_64_DTPOFF32:
+@@ -3916,18 +3964,25 @@ corrupt_input:
+ 	      || (input_section->flags & SEC_CODE) == 0)
+ 	    relocation -= _bfd_x86_elf_dtpoff_base (info);
+ 	  else
+-	    relocation = elf_x86_64_tpoff (info, relocation);
++	    relocation = elf_x86_64_tpoff (info, relocation, rel);
++//	  printf ("%s: R_X86_64_DTPOFF32 relocation = %lx\n",
++//		  __FUNCTION__, relocation);
+ 	  break;
+ 
+ 	case R_X86_64_TPOFF32:
+ 	case R_X86_64_TPOFF64:
+ 	  BFD_ASSERT (bfd_link_executable (info));
+-	  relocation = elf_x86_64_tpoff (info, relocation);
++	  relocation = elf_x86_64_tpoff (info, relocation, rel);
++//	  printf ("%s: R_X86_64_TPOFF32 relocation = %lx\n",
++//		  __FUNCTION__, relocation);
+ 	  break;
+ 
+-	case R_X86_64_DTPOFF64:
++	case
++	  R_X86_64_DTPOFF64:
+ 	  BFD_ASSERT ((input_section->flags & SEC_CODE) == 0);
+ 	  relocation -= _bfd_x86_elf_dtpoff_base (info);
++//	  printf ("%s: R_X86_64_DTPOFF64 relocation = %lx\n",
++//		  __FUNCTION__, relocation);
+ 	  break;
+ 
+ 	default:
+diff --git a/bfd/elfnn-aarch64.c b/bfd/elfnn-aarch64.c
+index 0493cbb080a..9046b1ec319 100644
+--- a/bfd/elfnn-aarch64.c
++++ b/bfd/elfnn-aarch64.c
+@@ -2495,8 +2495,10 @@ _aarch64_elf_section_data;
+ #define elf_aarch64_section_data(sec) \
+   ((_aarch64_elf_section_data *) elf_section_data (sec))
+ 
+-/* The size of the thread control block which is defined to be two pointers.  */
+-#define TCB_SIZE	(ARCH_SIZE/8)*2
++/* The size of the thread control block which is defined to be two
++   pointers.  But it has been extended to 0x40 bytes for Popcorn
++   Linux.*/
++#define TCB_SIZE	0x40
+ 
+ struct elf_aarch64_local_symbol
+ {
+diff --git a/bfd/merge.c b/bfd/merge.c
+index 2ed1ef595c4..dfd44844c48 100644
+--- a/bfd/merge.c
++++ b/bfd/merge.c
+@@ -811,9 +811,11 @@ _bfd_merge_sections (bfd *abfd,
+ 
+       /* Finally remove all input sections which have not made it into
+ 	 the hash table at all.  */
++      /*
+       for (secinfo = sinfo->chain; secinfo; secinfo = secinfo->next)
+ 	if (secinfo->first_str == NULL)
+ 	  secinfo->sec->flags |= SEC_EXCLUDE | SEC_KEEP;
++      */
+     }
+ 
+   return TRUE;
+diff --git a/gold/mapfile.cc b/gold/mapfile.cc
+index 63a8e54a000..5fbf2254e7f 100644
+--- a/gold/mapfile.cc
++++ b/gold/mapfile.cc
+@@ -264,9 +264,10 @@ Mapfile::print_input_section(Relobj* relobj, unsigned int shndx)
+   snprintf(sizebuf, sizeof sizebuf, "0x%llx",
+ 	   static_cast<unsigned long long>(size));
+ 
+-  fprintf(this->map_file_, "0x%0*llx %10s %s\n",
++  fprintf(this->map_file_, "0x%0*llx %10s 0x%lx %s\n",
+ 	  parameters->target().get_size() / 4,
+ 	  static_cast<unsigned long long>(addr), sizebuf,
++	  (unsigned long) relobj->section_addralign(shndx),
+ 	  relobj->name().c_str());
+ 
+   if (os != NULL)
+diff --git a/gold/x86_64.cc b/gold/x86_64.cc
+index 8b6027e72c3..beae05d0a3b 100644
+--- a/gold/x86_64.cc
++++ b/gold/x86_64.cc
+@@ -695,6 +695,14 @@ template<int size>
+ class Target_x86_64 : public Sized_target<size, false>
+ {
+  public:
++  // Popcorn: TLS starts at the end of the thread descriptor.  musl-libc's
++  // pthread descriptor size is 288 bytes.
++  const static int TCB_SIZE = size / 8 * 2; // Match aarch64
++  const static int MUSL_PTHREAD_SIZE = 288;
++  unsigned int tcb_size() const { return Target_x86_64<size>::TCB_SIZE; }
++  unsigned int pthread_size() const
++  { return Target_x86_64<size>::MUSL_PTHREAD_SIZE; }
++
+   // In the x86_64 ABI (p 68), it says "The AMD64 ABI architectures
+   // uses only Elf64_Rela relocation entries with explicit addends."
+   typedef Output_data_reloc<elfcpp::SHT_RELA, true, size, false> Reloc_section;
+@@ -5231,7 +5239,14 @@ Target_x86_64<size>::Relocate::relocate_tls(
+ 			  || issue_undefined_symbol_error(gsym));
+ 	      return;
+ 	    }
+-	  value -= tls_segment->memsz();
++	  // Popcorn: create a uniform TLS layout which places TLS *above* the
++	  // thread pointer (rather than below like normal x86-64).
++	  typename elfcpp::Elf_types<size>::Elf_Addr aligned_tcb_size =
++	      align_address(target->tcb_size(),
++			    tls_segment->maximum_alignment());
++	  value += aligned_tcb_size +
++		   target->pthread_size() -
++		   target->tcb_size();
+ 	}
+       Relocate_functions<size, false>::rela32(view, value, addend);
+       break;
+@@ -5246,7 +5261,14 @@ Target_x86_64<size>::Relocate::relocate_tls(
+ 			  || issue_undefined_symbol_error(gsym));
+ 	      return;
+ 	    }
+-	  value -= tls_segment->memsz();
++	  // Popcorn: create a uniform TLS layout which places TLS *above* the
++	  // thread pointer (rather than below like normal x86-64).
++	  typename elfcpp::Elf_types<size>::Elf_Addr aligned_tcb_size =
++	      align_address(target->tcb_size(),
++			    tls_segment->maximum_alignment());
++	  value += aligned_tcb_size +
++		   target->pthread_size() -
++		   target->tcb_size();
+ 	}
+       Relocate_functions<size, false>::rela64(view, value, addend);
+       break;
+@@ -5312,7 +5334,11 @@ Target_x86_64<size>::Relocate::relocate_tls(
+ 		      || issue_undefined_symbol_error(gsym));
+ 	  return;
+ 	}
+-      value -= tls_segment->memsz();
++      // Popcorn: create a uniform TLS layout which places TLS *above* the
++      // thread pointer (rather than below like normal x86-64).
++      typename elfcpp::Elf_types<size>::Elf_Addr aligned_tcb_size =
++          align_address(target->tcb_size(), tls_segment->maximum_alignment());
++      value += aligned_tcb_size + target->pthread_size() - target->tcb_size();
+       Relocate_functions<size, false>::rela32(view, value, addend);
+       break;
+     }
+@@ -5436,7 +5462,16 @@ Target_x86_64<size>::Relocate::tls_gd_to_le(
+ 	     15);
+     }
+ 
+-  value -= tls_segment->memsz();
++  // Popcorn: create a uniform TLS layout which places TLS *above* the
++  // thread pointer (rather than below like normal x86-64).
++  // TODO if we support different thread descriptor sizes then the target
++  // (which defines which libc we're supporting) must be passed in here
++  typename elfcpp::Elf_types<size>::Elf_Addr aligned_tcb_size =
++      align_address(Target_x86_64<size>::TCB_SIZE,
++		    tls_segment->maximum_alignment());
++  value += aligned_tcb_size +
++	   Target_x86_64<size>::MUSL_PTHREAD_SIZE -
++	   Target_x86_64<size>::TCB_SIZE;
+   Relocate_functions<size, false>::rela32(view + 8, value, 0);
+ 
+   // The next reloc should be a PLT32 reloc against __tls_get_addr.
+@@ -5507,7 +5542,16 @@ Target_x86_64<size>::Relocate::tls_desc_gd_to_le(
+ 		     view[-3] == 0x48 && view[-2] == 0x8d && view[-1] == 0x05);
+       view[-2] = 0xc7;
+       view[-1] = 0xc0;
+-      value -= tls_segment->memsz();
++      // Popcorn: create a uniform TLS layout which places TLS *above* the
++      // thread pointer (rather than below like normal x86-64).
++      // TODO if we support different thread descriptor sizes then the target
++      // (which defines which libc we're supporting) must be passed in here
++      typename elfcpp::Elf_types<size>::Elf_Addr aligned_tcb_size =
++	  align_address(Target_x86_64<size>::TCB_SIZE,
++			tls_segment->maximum_alignment());
++      value += aligned_tcb_size +
++	       Target_x86_64<size>::MUSL_PTHREAD_SIZE -
++	       Target_x86_64<size>::TCB_SIZE;
+       Relocate_functions<size, false>::rela32(view, value, 0);
+     }
+   else
+@@ -5642,7 +5686,18 @@ Target_x86_64<size>::Relocate::tls_ie_to_le(
+     }
+ 
+   if (tls_segment != NULL)
+-    value -= tls_segment->memsz();
++    {
++      // Popcorn: create a uniform TLS layout which places TLS *above* the
++      // thread pointer (rather than below like normal x86-64).
++      // TODO if we support different thread descriptor sizes then the target
++      // (which defines which libc we're supporting) must be passed in here
++      typename elfcpp::Elf_types<size>::Elf_Addr aligned_tcb_size =
++	  align_address(Target_x86_64<size>::TCB_SIZE,
++			tls_segment->maximum_alignment());
++      value += aligned_tcb_size +
++	       Target_x86_64<size>::MUSL_PTHREAD_SIZE -
++	       Target_x86_64<size>::TCB_SIZE;
++    }
+   Relocate_functions<size, false>::rela32(view, value, 0);
+ }
+ 
+diff --git a/ld/ldlang.c b/ld/ldlang.c
+index e100c0533cf..d19e7082c32 100644
+--- a/ld/ldlang.c
++++ b/ld/ldlang.c
+@@ -46,6 +46,8 @@
+ #include "plugin.h"
+ #endif /* ENABLE_PLUGINS */
+ 
++#include <signal.h>
++
+ #ifndef offsetof
+ #define offsetof(TYPE, MEMBER) ((size_t) & (((TYPE*) 0)->MEMBER))
+ #endif
+@@ -4632,6 +4634,7 @@ print_input_section (asection *i, bfd_boolean is_discarded)
+   bfd_size_type size = i->size;
+   int len;
+   bfd_vma addr;
++  unsigned int sec_align = 1 << i->alignment_power;
+ 
+   init_opb (i);
+ 
+@@ -4651,16 +4654,16 @@ print_input_section (asection *i, bfd_boolean is_discarded)
+     }
+ 
+   if (i->output_section != NULL
+-      && i->output_section->owner == link_info.output_bfd)
++      && i->output_section->owner == link_info.output_bfd) {
+     addr = i->output_section->vma + i->output_offset;
+-  else
++  } else
+     {
+       addr = print_dot;
+       if (!is_discarded)
+ 	size = 0;
+     }
+ 
+-  minfo ("0x%V %W %pB\n", addr, TO_ADDR (size), i->owner);
++  minfo ("0x%V %W 0x%v %pB\n", addr, TO_ADDR (size), sec_align, i->owner);
+ 
+   if (size != i->rawsize && i->rawsize != 0)
+     {

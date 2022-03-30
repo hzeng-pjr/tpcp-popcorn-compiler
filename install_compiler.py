@@ -50,8 +50,9 @@ llvm_url = 'file:///scratch/mirrors/llvm-project.git'
 llvm_version = 9
 
 # Binutils 2.32 URL
-#binutils_url = 'http://ftp.gnu.org/gnu/binutils/binutils-2.32.tar.bz2'
-#binutils_url = 'file:///scratch/mirrors/binutils-2.32.tar.bz2'
+binutils_version = "binutils-2.34"
+#binutils_url = 'http://ftp.gnu.org/gnu/binutils/'
+binutils_url = 'file:///scratch/mirrors/' + binutils_version + '.tar.bz2'
 binutils_dev = "/scratch/pjr/binutils-gdb"
 local_binutils = True
 
@@ -431,10 +432,10 @@ def install_clang_llvm(base_path, install_path, num_threads, llvm_targets):
 
 def install_binutils(base_path, install_path, num_threads, target):
 
-    binutils_install_path = os.path.join(install_path, 'src', 'binutils-2.32')
+    binutils_install_path = os.path.join(install_path, 'src', binutils_version)
 
     patch_path = os.path.join(base_path, 'patches', 'binutils-gold',
-                              'binutils-2.32.patch')
+                              '{}.patch'.format(binutils_version))
 
     configure_flags = ['--prefix={}'.format(install_path),
                        '--target={}'.format(target + '-popcorn-linux-gnu'),
@@ -458,21 +459,22 @@ def install_binutils(base_path, install_path, num_threads, target):
         args = ['cp', '-a', binutils_dev, binutils_install_path]
         run_cmd('download binutils source', args)
     else:
+        binutils_tarball = '{}.tar.bz2'.format(binutils_version)
         try:
-            urllib.request.urlretrieve(binutils_url, 'binutils-2.32.tar.bz2')
-            with tarfile.open('binutils-2.32.tar.bz2', 'r:bz2') as f:
+            urllib.request.urlretrieve(binutils_url, binutils_tarball)
+            with tarfile.open(binutils_tarball, 'r:bz2') as f:
                 f.extractall(path=os.path.join(install_path, 'src'))
         except Exception as e:
             print('Could not download/extract binutils source ({})!'.format(e))
             sys.exit(1)
 
-            #=====================================================
-            # PATCH BINUTILS
-            #=====================================================
-            print("Patching binutils...")
-            with open(patch_path, 'r') as patch_file:
-                args = ['patch', '-p1', '-d', binutils_install_path]
-                run_cmd('patch binutils', args, patch_file)
+        #=====================================================
+        # PATCH BINUTILS
+        #=====================================================
+        print("Patching binutils...")
+        with open(patch_path, 'r') as patch_file:
+            args = ['patch', '-p1', '-d', binutils_install_path]
+            run_cmd('patch binutils', args, patch_file)
 
     #=====================================================
     # BUILD AND INSTALL BINUTILS
