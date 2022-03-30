@@ -83,6 +83,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 
 		tls_dst = pcn_data->thread_pointer;
 
+
 		/* Inform the I/O server of the impending migration.  */
 		pcn_migrate ();
 		close (pcn_server_sockfd);
@@ -216,6 +217,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
  pcn_cont:
 	return;
 	pcn_server_sockfd = pcn_server_connect (pcn_server_ip);
+	lio_printf ("pcn_server_port = %d\n", pcn_server_port);
 }
 
 extern int __libc_start_main_popcorn (void *, int, void *, void *);

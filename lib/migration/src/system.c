@@ -131,8 +131,6 @@ load_lib (char *lib)
   unsigned long map, base;
   struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
 
-  //lio_printf ("loading %s...", lib);
-
   for (i = 0; i < pcn_data->num_maps; i++)
     if (lio_strcmp (lib, pcn_data->maps[i].name) == 0)
       {
@@ -228,14 +226,6 @@ load_lib (char *lib)
       if (phdrs[i].p_flags & PF_X)
 	elf_prot |= PROT_EXEC;
 
-      /* Skip the first segment as it has already been mapped.  */
-//      if ((phdrs[i].p_vaddr & -PAGE_SIZE) == addr_min)
-//	{
-//	  unsigned long size = this_max - this_min;
-//	  lio_munmap ((void *) (map + size), total_size - size);
-//	  continue;
-//	}
-
       ret = (long) lio_mmap ((void *)(base + this_min), this_max - this_min,
 			    elf_prot, MAP_PRIVATE | MAP_FIXED, fd, off_start);
       if (ret < 0)
@@ -260,8 +250,6 @@ load_lib (char *lib)
     }
 
   lio_close (fd);
-
-  //lio_print ("success!\n");
 
   return (void *) (base + ehdr.e_entry);
 }
@@ -470,8 +458,6 @@ main_function (int argc, char *argv[])
   pcn_data->pcn_break = 1;
 
   ld_start = load_lib (pcn_data->maps[0].name); // Load ld-linux
-
-  //pcn_break ();
 
 #if defined (__x86_64__)
   asm volatile ("jmp *%0;\n\t" : : "r" (ld_start));
