@@ -1046,7 +1046,7 @@ def install_libelf(base_path, install_path, target, num_threads):
     print("Configuring libelf ({})...".format(target))
     compiler = os.path.join(install_path, 'bin',
                             target + '-popcorn-linux-gnu-gcc')
-    libelf_cflags = "-O3"
+    libelf_cflags = "-O3 -fPIE"
 
     args = ' '.join(['CC={}'.format(compiler),
                      'CFLAGS="{}"'.format(libelf_cflags),

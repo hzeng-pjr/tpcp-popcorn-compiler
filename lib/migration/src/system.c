@@ -67,10 +67,12 @@ unload_ldso (struct mmap_entries *me)
       ret = lio_munmap ((void *)(base + this_min), this_max - this_min);
 
       if (ret)
-	lio_print ("ld.so munmap failed\n");
+	lio_dbg_printf ("ld.so munmap failed\n");
     }
 
   lio_close (fd);
+
+  lio_dbg_printf ("Unloaded ld.so!\n");
 
   return 0;
 }
@@ -104,6 +106,11 @@ unload_libs ()
 	ret = unload_ldso (&pcn_data->maps[i]);
       else
 	ret = lio_munmap ((void *)me[i].start, me[i].size);
+
+      if (ret)
+	lio_dbg_printf ("munmap %u of %lu failed\n", i+1, pcn_data->num_maps);
+      else
+	lio_dbg_printf ("munmap %u of %lu success\n", i+1, pcn_data->num_maps);
     }
 }
 
@@ -130,6 +137,8 @@ load_lib (char *lib)
   size_t dyn = 0;
   unsigned long map, base;
   struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
+
+  lio_dbg_printf ("loading %s...", lib);
 
   for (i = 0; i < pcn_data->num_maps; i++)
     if (lio_strcmp (lib, pcn_data->maps[i].name) == 0)
@@ -226,6 +235,14 @@ load_lib (char *lib)
       if (phdrs[i].p_flags & PF_X)
 	elf_prot |= PROT_EXEC;
 
+      /* Skip the first segment as it has already been mapped.  */
+//      if ((phdrs[i].p_vaddr & -PAGE_SIZE) == addr_min)
+//	{
+//	  unsigned long size = this_max - this_min;
+//	  lio_munmap ((void *) (map + size), total_size - size);
+//	  continue;
+//	}
+
       ret = (long) lio_mmap ((void *)(base + this_min), this_max - this_min,
 			    elf_prot, MAP_PRIVATE | MAP_FIXED, fd, off_start);
       if (ret < 0)
@@ -250,6 +267,8 @@ load_lib (char *lib)
     }
 
   lio_close (fd);
+
+  lio_dbg_printf ("success!\n");
 
   return (void *) (base + ehdr.e_entry);
 }
@@ -402,6 +421,10 @@ print_all_dso ()
   struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
   int i;
   unsigned long size;
+  struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
+
+  if (pd->rio_debug == 0)
+    return;
 
   for (i = 0; i < pcn_data->num_maps; i++)
     {
@@ -459,6 +482,8 @@ main_function (int argc, char *argv[])
 
   ld_start = load_lib (pcn_data->maps[0].name); // Load ld-linux
 
+  //pcn_break ();
+
 #if defined (__x86_64__)
   asm volatile ("jmp *%0;\n\t" : : "r" (ld_start));
 #elif defined (__aarch64__)
@@ -487,7 +512,7 @@ reload_segment (Elf64_Phdr *phdr, int seg, int prot, int fd, char *name)
   int filesz = phdr[seg].p_filesz;
   int offset = phdr[seg].p_offset;
   
-  //lio_printf ("loading %s %lx @ %u bytes\n", name, paddr, filesz);
+  lio_dbg_printf ("loading %s %lx @ %u bytes\n", name, paddr, filesz);
 
   lio_mprotect (paddr, filesz, (PROT_READ | PROT_WRITE));
   lio_pread (fd, paddr, filesz, offset);

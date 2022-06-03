@@ -1,6 +1,9 @@
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <sys/uio.h>
+#include <popcorn.h>
 #include "local_io.h"
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
@@ -254,6 +257,24 @@ lio_snprintf (char *str, size_t size, const char *fmt, ...)
 
   va_start (arg, fmt);
   ret = pcn_dl_debug_vdprintf (-1, 0, str, size, fmt, arg);
+  va_end (arg);
+
+  return ret;
+}
+
+
+int
+lio_dbg_printf (const char *fmt, ...)
+{
+  va_list arg;
+  int ret;
+  struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
+
+  if (pd->rio_debug == 0)
+    return 0;
+
+  va_start (arg, fmt);
+  ret = pcn_dl_debug_vdprintf (STDOUT_FILENO, 0, NULL, 0, fmt, arg);
   va_end (arg);
 
   return ret;

@@ -223,6 +223,8 @@ int st_userspace_rewrite(void* sp,
 {
   st_handle src_handle, dest_handle;
 
+  //lio_printf ("entering %s\n", __FUNCTION__);
+
   switch(src_arch)
   {
   case ARCH_AARCH64: src_handle = aarch64_handle; break;
@@ -423,6 +425,8 @@ static int userspace_rewrite_internal(void* sp,
   stack_bounds bounds;
   stack_bounds* bounds_ptr;
 #endif
+
+  //lio_printf ("entering %s\n", __FUNCTION__);
 
   if(!sp || !src_regs || !dest_regs || !src_handle || !dest_handle)
   {

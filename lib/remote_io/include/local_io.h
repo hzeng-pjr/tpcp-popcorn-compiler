@@ -58,6 +58,7 @@ extern void lio_memcpy (void *restrict d, const void *s, size_t n);
 extern void lio_spin ();
 
 extern int lio_printf (const char *fmt, ...);
+extern int lio_dbg_printf (const char *fmt, ...);
 extern int lio_fprintf (int fd, const char *fmt, ...);
 extern int lio_snprintf (char *str, size_t size, const char *fmt, ...);
 extern void lio_print (char *str);

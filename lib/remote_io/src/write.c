@@ -12,6 +12,10 @@
 #include <sys/socket.h>
 #include <syscall.h>
 #include <unistd.h>
+#include <popcorn.h>
+#include <local_io.h>
+
+static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
 
 struct pcn_write_msg {
   int fd;
@@ -20,7 +24,6 @@ struct pcn_write_msg {
 };
 
 extern uint32_t local_ip;
-void rio_printf (char *str, ...);
 
 void
 rio_get_write (struct pcn_msg_hdr *hdr, int fd)
@@ -32,9 +35,9 @@ rio_get_write (struct pcn_msg_hdr *hdr, int fd)
 
   res = recv (fd, msg, hdr->msg_size, 0);
   if (res < hdr->msg_size)
-    rio_printf ("error: lost data\n");
+    lio_printf ("error: lost data\n");
 
-  if (local_ip != pcn_server_ip) {
+  if (local_ip != pd->pcn_server_ip) {
     struct iovec iov[1];
 
     iov[0].iov_base = msg->buf;
@@ -65,7 +68,7 @@ ssize_t pcn_writev (int fd, const struct iovec *iov, int iovcnt)
   int res;
 
   /* Check if the server is down.  */
-  if (pcn_server_sockfd < 0)
+  if (pd->pcn_server_sockfd < 0)
     return syscall (SYS_writev, fd, iov, iovcnt);
 
   for (i = 0; i < iovcnt; i++)
@@ -93,7 +96,7 @@ ssize_t pcn_writev (int fd, const struct iovec *iov, int iovcnt)
   hdr.msg_kind = PCN_SYS_WRITE;
   hdr.msg_id = 0;
 
-  res = pcn_send (pcn_server_sockfd, &hdr, payload, iovcnt+1);
+  res = pcn_send (pd->pcn_server_sockfd, &hdr, payload, iovcnt+1);
 
 //  printf ("size: hdr = %zu, msg = %zu (%d), payload = %d\n",
 //	  sizeof (hdr), sizeof (msg), msg.size, size);
