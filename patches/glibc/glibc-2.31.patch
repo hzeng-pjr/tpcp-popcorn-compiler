@@ -661,10 +661,10 @@ index 4f6a86ef37..92451da488 100644
      {
 diff --git a/elf/popcorn.h b/elf/popcorn.h
 new file mode 100644
-index 0000000000..bdd9d95ebf
+index 0000000000..7f75f0f23e
 --- /dev/null
 +++ b/elf/popcorn.h
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,59 @@
 +#ifndef POPCORN_H
 +#define POPCORN_H
 +
@@ -672,6 +672,14 @@ index 0000000000..bdd9d95ebf
 +#define PCN_PAGE_SIZE 0x1000
 +#define PCN_HETEROGENEOUS 1
 +#define PCN_FILENAME 64
++
++#define PCN_NSIG 64
++
++struct pcn_sig {
++  void *pcn_sa_handler;
++  unsigned long pcn_sa_mask;
++  int pcn_sa_flags;
++};
 +
 +struct mmap_entries {
 +  char *name;
@@ -705,6 +713,9 @@ index 0000000000..bdd9d95ebf
 +  int rio_child_pid;
 +
 +  int rio_debug;
++
++  unsigned long rio_sa_active;
++  struct pcn_sig rio_sa_sigs[PCN_NSIG];
 +
 +  struct mmap_entries maps[];
 +};
@@ -1288,10 +1299,10 @@ index 0000000000..a14f99a23c
 +}
 diff --git a/remote_io/Makefile b/remote_io/Makefile
 new file mode 100644
-index 0000000000..aca81dfd0b
+index 0000000000..91278f8247
 --- /dev/null
 +++ b/remote_io/Makefile
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,54 @@
 +# Copyright (C) 2022 RASEC Technologies
 +# This file is part of the GNU C Library.
 +
@@ -1321,18 +1332,37 @@ index 0000000000..aca81dfd0b
 +routines := rio_write rio_open rio_server rio_print log platform io \
 +	    pcn_send pcn_open pcn_read rio_read pcn_fxstatat rio_fxstatat \
 +	    pcn_mmap rio_mmap rio_vma local_io file_ops lio_util \
-+	    lio_signal pcn_epoll rio_epoll
++	    lio_signal pcn_epoll rio_epoll pcn_fallocate rio_fallocate \
++	    pcn_sigaction rio_sigaction pcn_fcntl rio_fcntl \
++	    pcn_getcwd rio_getcwd pcn_close rio_close pcn_pipe rio_pipe \
++	    pcn_socket rio_socket pcn_bind rio_bind pcn_listen rio_listen \
++	    pcn_accept rio_accept pcn_connect rio_connect pcn_poll rio_poll
 +
 +$(objpfx)rio_write.os: $(common-objpfx)misc/bits/syscall.h
 +
++others = popcorn_killd
++
++install-bin = popcorn_killd
++
++sysroot = `$(CC) -print-sysroot`
++rtld-LDFLAGS = $()
++
++# Debug workaround, because popcorn ld-linux is not backwards
++# compatible with the system's ld-linux.
++LDFLAGS-popcorn_killd = -Wl,-rpath,$(sysroot)/lib -Wl,-dynamic-linker,$(sysroot)/lib/ld-2.31.so
++
++popcorn_killd-modules = local_io lio_util lio_signal
 +
 +include ../Rules
++
++#$(objpfx)popcorn_killd: $(popcorn_killd-modules%=$(objpfx)%.o)
++#$(objpfx)popcorn_killd: $(objpfx)local_io.o $(objpfx)lio_util.o
 diff --git a/remote_io/Versions b/remote_io/Versions
 new file mode 100644
-index 0000000000..2fb177949e
+index 0000000000..121adc2652
 --- /dev/null
 +++ b/remote_io/Versions
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,34 @@
 +
 +ld {
 +  GLIBC_PRIVATE {
@@ -1345,12 +1375,26 @@ index 0000000000..2fb177949e
 +  GLIBC_PRIVATE {
 +    pcn_migrate;
 +    pcn_server_connect;
++    pcn_server_init;
 +    popcorn_log;
 +    pcn_writev;
 +    pcn_write;
 +    pcn_openat;
 +    pcn_close;
 +    pcn_fxstatat;
++    pcn_sigaction;
++    pcn_epoll_create;
++    pcn_epoll_ctl;
++    pcn_epoll_wait;
++    pcn_fallocate;
++    pcn_mmap;
++    pcn_munmap;
++    pcn_get_ip;
++    pcn_unload_signals;
++    pcn_restore_signals;
++    pcn_accept;
++    pcn_connect;
++    pcn_read;
 +  }
 +}
 diff --git a/remote_io/debug/arch_crash.h b/remote_io/debug/arch_crash.h
@@ -1400,16 +1444,17 @@ index 0000000000..916f6bd3e8
 +
 diff --git a/remote_io/file_ops.c b/remote_io/file_ops.c
 new file mode 100644
-index 0000000000..33c34951d8
+index 0000000000..b39054c66e
 --- /dev/null
 +++ b/remote_io/file_ops.c
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,166 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <string.h>
 +#include <sys/stat.h>
 +#include <fcntl.h>
 +#include <unistd.h>
++#include <errno.h>
 +
 +#include "server.h"
 +#include "message.h"
@@ -1461,6 +1506,7 @@ index 0000000000..33c34951d8
 +{
 +  struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
 +  struct pcn_msg_io_data iod;
++  struct pcn_msg_hdr ack;
 +  int recv, res;
 +  int newfd;
 +  void *addr;
@@ -1476,7 +1522,14 @@ index 0000000000..33c34951d8
 +    lio_error ("%s: failed to create local copy of '%s'\n",
 +	       __FUNCTION__, msg->pathname);
 +
-+  res = get_msg (sockfd, &iod, sizeof (iod));
++  ack.msg_id = 0;
++  ack.msg_type = PCN_TYPE_CONTROL;
++  ack.msg_kind = PCN_CTL_ACK;
++  ack.msg_async = PCN_SEND_NORET;
++  ack.msg_size = sizeof (ack);
++  pcn_send (sockfd, &ack);
++
++  res = lio_get_msg (sockfd, &iod, sizeof (iod));
 +  if (res < sizeof (iod))
 +    lio_error ("%s: failed to receive incoming file size\n", __FUNCTION__);
 +
@@ -1499,10 +1552,10 @@ index 0000000000..33c34951d8
 +      res = lio_read (sockfd, addr + recv, iod.data.cnt - recv);
 +
 +      if (res < 0)
-+        lio_error ("%s: failed to receive file, res = %u\n", __FUNCTION__, res);
++	lio_error ("%s: failed to receive file, res = %u\n", __FUNCTION__, res);
 +
 +      recv += res;
-+      rio_dbg_printf ("%s: received %u bytes (%u)\n", __FUNCTION__, recv, res);
++      //rio_dbg_printf ("%s: received %u bytes (%u)\n", __FUNCTION__, recv, res);
 +    }
 +
 +  //rio_dbg_printf ("%s: %s\n", __FUNCTION__, addr);
@@ -1510,44 +1563,68 @@ index 0000000000..33c34951d8
 +  lio_munmap (addr, iod.data.cnt);
 +  lio_close (newfd);
 +
++  lio_get_msg (sockfd, &ack, sizeof (ack));
++
++  rio_dbg_printf ("%s: received %u bytes\n", __FUNCTION__, res);
++
 +  return abs(msg->dirfd);
++}
++
++int
++rio_send_file (struct pcn_msg_hdr *hdr)
++{
++  struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++  struct pcn_msg_io_data iod;
++  struct pcn_msg_hdr ack;
++  struct stat st;
++  int sockfd = pd->pcn_server_sockfd;
++  char fname[hdr->msg_size];
++  int sent, res;
++  int fd;
++  void *addr;
++  off_t offset = 0;
++
++  res = lio_get_msg (sockfd, fname, hdr->msg_size);
++
++  fd = lio_open (fname, O_RDONLY, 0);
++  lio_fstat (fd, &st);
++
++  rio_dbg_printf ("%s[%u]: sending file '%s', size = %u\n",
++		  __FUNCTION__, hdr->msg_id, fname, st.st_size);
++
++  sent = 0;
++  while (sent < st.st_size)
++    {
++      res = lio_sendfile (sockfd, fd, &offset, st.st_size - sent);
++
++      if (res < 0)
++	lio_error ("%s[%u]: failed to send file -- errno = %u\n",
++		   __FUNCTION__, hdr->msg_id, errno);
++
++      sent += res;
++    }
++
++  rio_dbg_printf ("%s[%u]: sent file '%s', size = '%u' bytes\n",
++		  __FUNCTION__, hdr->msg_id, fname, sent);
++
++  lio_close (fd);
++
++  res = lio_get_msg (sockfd, &ack, sizeof (ack));
++  LIO_ASSERT (res == sizeof (ack), "failed to receive ack\n");
++
++  return sent;
 +}
 diff --git a/remote_io/io.c b/remote_io/io.c
 new file mode 100644
-index 0000000000..3ca024c992
+index 0000000000..ea144cdaf7
 --- /dev/null
 +++ b/remote_io/io.c
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,15 @@
 +#include <sysdep-cancel.h>
 +
 +#include <errno.h>
 +#include "server.h"
 +#include "local_io.h"
-+
-+/* Read SIZE bytes from SOCK into BUF. SOCK is read until SIZE bytes
-+   have been received or an error has been encounterd. */
-+int
-+get_msg (int sock, void *buf, int size)
-+{
-+  int cnt = 0;
-+  int res;
-+
-+  while (cnt < size)
-+  {
-+    res = lio_read (sock, &((char *)buf)[cnt], size - cnt);
-+
-+    if (res <= 0)
-+      {
-+	//rio_printf ("%s: error - lost data (%d -> %d/%d) - %d\n",
-+	//	    __FUNCTION__, size, cnt, res, errno);
-+	return res;
-+      }
-+
-+      cnt += res;
-+  }
-+
-+  return cnt;
-+}
 +
 +int
 +rio_msg_id (void)
@@ -1630,10 +1707,10 @@ index 0000000000..b1b04ca192
 \ No newline at end of file
 diff --git a/remote_io/lio_util.c b/remote_io/lio_util.c
 new file mode 100644
-index 0000000000..e7ddef609f
+index 0000000000..f69a15916c
 --- /dev/null
 +++ b/remote_io/lio_util.c
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,164 @@
 +#include <stdarg.h>
 +#include <stdint.h>
 +#include <stdlib.h>
@@ -1773,17 +1850,42 @@ index 0000000000..e7ddef609f
 +    count += lio_write (sockfd, (char *)(data + count), size - count);
 +  } while (count < size);
 +}
++
++/* Read SIZE bytes from SOCK into BUF. SOCK is read until SIZE bytes
++   have been received or an error has been encounterd. */
++int
++lio_get_msg (int sock, void *buf, int size)
++{
++  int cnt = 0;
++  int res;
++
++  while (cnt < size)
++  {
++    res = lio_read (sock, &((char *)buf)[cnt], size - cnt);
++
++    if (res <= 0)
++      {
++	//rio_printf ("%s: error - lost data (%d -> %d/%d) - %d\n",
++	//	    __FUNCTION__, size, cnt, res, errno);
++	return res;
++      }
++
++      cnt += res;
++  }
++
++  return cnt;
++}
+\ No newline at end of file
 diff --git a/remote_io/local_io.c b/remote_io/local_io.c
 new file mode 100644
-index 0000000000..20f0d76e2c
+index 0000000000..3112d7163e
 --- /dev/null
 +++ b/remote_io/local_io.c
-@@ -0,0 +1,221 @@
+@@ -0,0 +1,317 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <string.h>
 +#include <stdint.h>
-+#include <sys/syscall.h>
 +#include <fcntl.h>
 +#include <unistd.h>
 +#include <sys/mman.h>
@@ -1793,6 +1895,11 @@ index 0000000000..20f0d76e2c
 +#include <sys/auxv.h>
 +#include <nptl/pthreadP.h>
 +#include <sys/ioctl.h>
++#include <sys/socket.h>
++#include <poll.h>
++#include <socketcall.h>
++#include <kernel-features.h>
++#include <sys/syscall.h>
 +#include "remote_io.h"
 +#include "local_io.h"
 +
@@ -1903,13 +2010,23 @@ index 0000000000..20f0d76e2c
 +int
 +lio_fallocate (int fd, int mode, off_t offset, off_t len)
 +{
-+  return SYSCALL_CANCEL (fallocate, fd, mode, offset, len);
++  return SYSCALL_CANCEL (fallocate, fd, mode,
++			 SYSCALL_LL (offset), SYSCALL_LL (len));
 +}
 +
 +int
 +lio_ioctl_3 (int fd, unsigned long request, const void *arg)
 +{
 +  return ioctl (fd, request, arg);
++}
++
++int
++lio_fcntl (int fd, int cmd, void *arg)
++{
++  LIO_ASSERT (cmd == F_GETFL || cmd == F_SETFL || F_GETFD,
++	      "unsupported fcntl arguments");
++
++  return INLINE_SYSCALL_CALL (fcntl, fd, cmd, (void *) arg);
 +}
 +
 +int
@@ -1924,6 +2041,12 @@ index 0000000000..20f0d76e2c
 +  return INLINE_SYSCALL (unlinkat, 3, AT_FDCWD, pathname, 0);
 +}
 +
++int
++lio_getcwd (char *buf, size_t size)
++{
++  return INLINE_SYSCALL (getcwd, 2, buf, size);
++}
++
 +void
 +lio_exit (int status)
 +{
@@ -1931,8 +2054,13 @@ index 0000000000..20f0d76e2c
 +}
 +
 +int
-+lio_accept(int sockfd, struct sockaddr *restrict addr,
-+	   socklen_t *restrict addrlen)
++lio_accept (int fd, __SOCKADDR_ARG addr, socklen_t *len)
++{
++  return SYSCALL_CANCEL (accept4, fd, addr.__sockaddr__, len, 0);
++}
++
++int
++lio_accept_raw(int sockfd, const void *addr, socklen_t *addrlen)
 +{
 +  return SYSCALL_CANCEL (accept, sockfd, addr, addrlen);
 +}
@@ -1947,6 +2075,54 @@ index 0000000000..20f0d76e2c
 +lio_sendfile (int out_fd, int in_fd, off_t *offset, size_t count)
 +{
 +  return SYSCALL_CANCEL (sendfile, out_fd, in_fd, offset, count);
++}
++
++int
++lio_bind (int fd, __CONST_SOCKADDR_ARG addr, socklen_t len)
++{
++  return INLINE_SYSCALL (bind, 3, fd, addr.__sockaddr__, len);
++}
++
++int
++lio_bind_raw (int fd, const void *addr, socklen_t len)
++{
++  return INLINE_SYSCALL (bind, 3, fd, addr, len);
++}
++
++int
++lio_getsockname (int fd, __SOCKADDR_ARG addr, socklen_t *len)
++{
++  return INLINE_SYSCALL (getsockname, 3, fd, addr.__sockaddr__, len);
++}
++
++int
++lio_getsockopt (int fd, int level, int optname, const void *optval, socklen_t *len)
++{
++  return INLINE_SYSCALL (getsockopt, 5, fd, level, optname, optval, len);
++}
++
++int
++lio_setsockopt (int fd, int level, int optname, const void *optval, socklen_t len)
++{
++  return INLINE_SYSCALL (setsockopt, 5, fd, level, optname, optval, len);
++}
++
++int
++lio_listen (int sockfd, int backlog)
++{
++  return INLINE_SYSCALL (listen, 2, sockfd, backlog);
++}
++
++int
++lio_connect (int fd, __CONST_SOCKADDR_ARG addr, socklen_t len)
++{
++  return INLINE_SYSCALL (bind, 3, fd, addr.__sockaddr__, len);
++}
++
++int
++lio_connect_raw (int fd, const void *addr, socklen_t len)
++{
++  return SYSCALL_CANCEL (connect, fd, addr, len);
 +}
 +
 +int
@@ -1996,17 +2172,39 @@ index 0000000000..20f0d76e2c
 +}
 +
 +int
++lio_pipe2 (int pfds[2], int flags)
++{
++  return INLINE_SYSCALL (pipe2, 2, pfds, flags);
++}
++
++int
 +lio_epoll_create1 (int flags)
 +{
 + return INLINE_SYSCALL (epoll_create1, 1, flags);
 +}
-\ No newline at end of file
++
++int
++lio_poll (struct pollfd *fds, int nfds, int timeout)
++{
++#ifdef __NR_poll
++  return SYSCALL_CANCEL (poll, fds, nfds, timeout);
++#else
++  return 0;
++#endif
++}
++
++int
++lio_ppoll (struct pollfd *fds, int nfds, const struct timespec *tp,
++	   const sigset_t *sigmask)
++{
++  return SYSCALL_CANCEL (ppoll, fds, nfds, tp, sigmask, _NSIG / 8);
++}
 diff --git a/remote_io/local_io.h b/remote_io/local_io.h
 new file mode 100644
-index 0000000000..4541ac7c8f
+index 0000000000..e368262fd7
 --- /dev/null
 +++ b/remote_io/local_io.h
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,129 @@
 +#ifndef LIO_H
 +#define LIO_H
 +
@@ -2015,6 +2213,7 @@ index 0000000000..4541ac7c8f
 +#include <sys/mman.h>
 +#include <sys/socket.h>
 +#include <signal.h>
++#include <stddef.h>
 +
 +#if defined (__x86_64__)
 +#define pcn_break()  do { asm volatile ("int3;"); } while (0)
@@ -2063,13 +2262,25 @@ index 0000000000..4541ac7c8f
 +
 +extern int lio_link (const char *oldpath, const char *newpath);
 +extern int lio_unlink (const char *pathname);
++extern int lio_getcwd (char *buf, size_t size);
 +
 +extern int lio_ioctl_3 (int fd, unsigned long request, const void *arg);
++extern int lio_fcntl (int fd, int cmd, void *arg);
 +
-+int lio_accept (int sockfd, struct sockaddr *restrict addr,
-+		socklen_t *restrict addrlen);
-+int lio_socket (int domain, int type, int protocol);
-+ssize_t lio_sendfile (int out_fd, int in_fd, off_t *offset, size_t count);
++extern int lio_accept (int fd, __SOCKADDR_ARG addr, socklen_t *len);
++extern int lio_accept_raw (int sockfd, const void *addr, socklen_t *addrlen);
++extern int lio_socket (int domain, int type, int protocol);
++extern ssize_t lio_sendfile (int out_fd, int in_fd, off_t *offset, size_t count);
++extern int lio_bind (int fd, __CONST_SOCKADDR_ARG addr, socklen_t len);
++extern int lio_bind_raw (int fd, const void * addr, socklen_t len);
++extern int lio_getsockname (int fd, __SOCKADDR_ARG addr, socklen_t *len);
++extern int lio_getsockopt (int fd, int level, int optname, const void *optval,
++			   socklen_t *len);
++extern int lio_setsockopt (int fd, int level, int optname, const void *optval,
++			   socklen_t len);
++extern int lio_listen (int sockfd, int backlog);
++extern int lio_connect (int fd, __CONST_SOCKADDR_ARG addr, socklen_t len);
++extern int lio_connect_raw (int fd, const void *addr, socklen_t len);
 +
 +extern void lio_exit (int status);
 +extern int lio_getpid (void);
@@ -2084,8 +2295,12 @@ index 0000000000..4541ac7c8f
 +extern int lio_sigaddset (sigset_t *set, int sig);
 +extern int lio_dup (int oldfd);
 +extern int lio_dup2 (int oldfd, int newfd);
++extern int lio_pipe2 (int pfds[2], int flags);
 +
 +extern int lio_epoll_create1 (int flags);
++extern int lio_poll (struct pollfd *fds, int nfds, int timeout);
++extern int lio_ppoll (struct pollfd *fds, int nfds, const struct timespec *tp,
++		      const sigset_t *sigmask);
 +
 +/* Utility functions  */
 +
@@ -2101,10 +2316,11 @@ index 0000000000..4541ac7c8f
 +extern void lio_assert (int cond, const char *restrict msg,
 +			const char *restrict file, int lineno);
 +
++extern int lio_get_msg (int sock, void *buf, int size);
++extern int lio_send_msg (int sockfd, void *data, int size);
++
 +extern void *lio_malloc (size_t size);
 +extern void lio_free (void *ptr);
-+
-+extern int lio_send_msg (int sockfd, void *data, int size);
 +
 +extern void lio_assert_sock_free (int fd, char *fn, int lineno);
 +
@@ -2149,10 +2365,10 @@ index 0000000000..69a69d8327
 +
 diff --git a/remote_io/message.h b/remote_io/message.h
 new file mode 100644
-index 0000000000..41883a0c29
+index 0000000000..f917f21b2c
 --- /dev/null
 +++ b/remote_io/message.h
-@@ -0,0 +1,136 @@
+@@ -0,0 +1,215 @@
 +#ifndef MESSAGE_H
 +#define MESSAGE_H
 +
@@ -2175,6 +2391,20 @@ index 0000000000..41883a0c29
 +  PCN_SYS_EPOLL_CREATE,
 +  PCN_SYS_EPOLL_CTL,
 +  PCN_SYS_EPOLL_WAIT,
++  PCN_SYS_FALLOCATE,
++  PCN_SYS_RT_SIGACTION,
++  PCN_SYS_FCNTL,
++  PCN_SYS_GETCWD,
++  PCN_SYS_PIPE,
++  PCN_SYS_SOCKET,
++  PCN_SYS_GETSOCKOPT,
++  PCN_SYS_SETSOCKOPT,
++  PCN_SYS_BIND,
++  PCN_SYS_LISTEN,
++  PCN_SYS_ACCEPT,
++  PCN_SYS_CONNECT,
++  PCN_SYS_POLL,
++  PCN_SYS_PPOLL,
 +} pcn_syscall;
 +
 +typedef enum {
@@ -2188,6 +2418,12 @@ index 0000000000..41883a0c29
 +  PCN_SEND_ASYNC,
 +  PCN_SEND_NORET,
 +} pcn_send_t;
++
++typedef enum {
++  PCN_SIG_SHUTDOWN,
++  PCN_SIG_KILL,
++  PCN_SIG_ADD,
++} pcn_signal_t;
 +
 +#define PCN_EPOLL_TYPE_CTL 1
 +#define PCN_EPOLL_TYPE_WAIT 2
@@ -2217,6 +2453,13 @@ index 0000000000..41883a0c29
 +  int fd;
 +  int cnt;
 +  char buf[0];
++} __attribute__ ((packed));
++
++struct pcn_msg_fallocate {
++  int fd;
++  int mode;
++  off_t offset;
++  off_t len;
 +} __attribute__ ((packed));
 +
 +struct pcn_msg_fxstatat {
@@ -2257,6 +2500,57 @@ index 0000000000..41883a0c29
 +  char events[0];
 +} __attribute__ ((packed));
 +
++struct pcn_msg_signal {
++  int sig;
++  int pid;
++  int type;
++} __attribute__ ((packed));
++
++struct pcn_msg_fcntl {
++  int fd;
++  int cmd;
++  void *arg;
++} __attribute__ ((packed));
++
++struct pcn_msg_pipe {
++  int pfds[2];
++  int res;
++  int _errno;
++} __attribute__ ((packed));
++
++struct pcn_msg_socket {
++  int domain;
++  int type;
++  int protocol;
++} __attribute__ ((packed));
++
++struct pcn_msg_sockopt {
++  int sockfd;
++  int level;
++  int optname;
++  int optlen;
++  char optval[0];
++} __attribute__ ((packed));
++
++struct pcn_msg_bind {
++  int sockfd;
++  int addrlen;
++  char addr[0];
++} __attribute__ ((packed));
++
++struct pcn_msg_listen {
++  int sockfd;
++  int backlog;
++} __attribute__ ((packed));
++
++struct pcn_msg_poll {
++  int nfds;
++  int timeout;
++  struct timespec tp;
++  sigset_t sigmask;
++  char fds[0];
++} __attribute__ ((packed));
++
 +struct pcn_msg_io_mmap {
 +  struct pcn_msg_hdr hdr;
 +  struct pcn_msg_mmap mmap;
@@ -2287,8 +2581,36 @@ index 0000000000..41883a0c29
 +extern int pcn_send (int fd, struct pcn_msg_hdr *hdr);
 +extern int pcn_send_iov (int fd, struct pcn_msg_hdr *hdr, struct iovec *payload, int cnt);
 +extern void pcn_res (int fd, struct pcn_msg_res *res);
++extern int pcn_msg_ack (int fd, struct pcn_msg_hdr *hdr, int res);
 +
 +#endif
+diff --git a/remote_io/notes.txt b/remote_io/notes.txt
+new file mode 100644
+index 0000000000..458215d9db
+--- /dev/null
++++ b/remote_io/notes.txt
+@@ -0,0 +1,21 @@
++redis
++ * ?
++
++xcalc
++ * access
++ * getpeername
++ * recvfrom
++ * recvmsg
++ * uname
++
++Unnecessary
++ * rt_sigprocmask
++
++Maybe?
++ * pread64
++ * sysinfo
++ 
++General
++ * Remove elf/rtld dependencies on remote_io (rio is probably
++   being pulled in from the system call forwarding)
++ * Add memory allocator for rtld
 diff --git a/remote_io/pcn-platform.h b/remote_io/pcn-platform.h
 new file mode 100644
 index 0000000000..a8cf57648b
@@ -2363,12 +2685,254 @@ index 0000000000..a8cf57648b
 +
 +#endif /* _PLATFORM_H */
 +
+diff --git a/remote_io/pcn_accept.c b/remote_io/pcn_accept.c
+new file mode 100644
+index 0000000000..45734c9ab2
+--- /dev/null
++++ b/remote_io/pcn_accept.c
+@@ -0,0 +1,57 @@
++#include <string.h>
++#include <sys/socket.h>
++#include <sysdep-cancel.h>
++#include <popcorn.h>
++#include "remote_io.h"
++#include "message.h"
++#include "server.h"
++#include "local_io.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++int
++pcn_accept (int sockfd, void *addr, int *addrlen)
++{
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_bind msg;
++  struct iovec payload[2];
++  int res;
++  int mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_accept_raw (sockfd, addr, addrlen);
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_ACCEPT;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_NORET;
++  hdr.msg_size = sizeof (msg) + *addrlen;
++
++  msg.sockfd = sockfd;
++  msg.addrlen = *addrlen;
++
++  payload[0].iov_base = &msg;
++  payload[0].iov_len = sizeof (msg);
++  payload[1].iov_base = addr;
++  payload[1].iov_len = *addrlen;
++
++  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 2);
++  if (res < sizeof (hdr) + hdr.msg_size)
++    lio_error ("%s: failed to send request\n", __FUNCTION__);
++
++  res = lio_get_msg (pd->pcn_server_sockfd, &msg, sizeof (msg));
++  res = lio_get_msg (pd->pcn_server_sockfd, addr, *addrlen);
++
++  if (msg.sockfd < 0)
++    errno = msg.addrlen;
++
++  rio_dbg_printf ("%s[%u]: sockfd = %u, addr = %lx, addrlen = %u -- res = %u, errno = %u\n",
++		  __FUNCTION__, mid, sockfd, addr, *addrlen, msg.sockfd, msg.addrlen);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  *addrlen = msg.addrlen;
++
++  return msg.sockfd;
++}
+diff --git a/remote_io/pcn_bind.c b/remote_io/pcn_bind.c
+new file mode 100644
+index 0000000000..68322a2902
+--- /dev/null
++++ b/remote_io/pcn_bind.c
+@@ -0,0 +1,47 @@
++#include <string.h>
++#include <sys/socket.h>
++#include <sysdep-cancel.h>
++#include <popcorn.h>
++#include "remote_io.h"
++#include "message.h"
++#include "server.h"
++#include "local_io.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++int
++pcn_bind (int sockfd, const void *addr, int addrlen)
++{
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_bind msg;
++  struct iovec payload[2];
++  int res;
++  int mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_bind_raw (sockfd, addr, addrlen);
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_BIND;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_SYNC;
++  hdr.msg_size = sizeof (msg) + addrlen;
++
++  msg.sockfd = sockfd;
++  msg.addrlen = addrlen;
++
++  payload[0].iov_base = &msg;
++  payload[0].iov_len = sizeof (msg);
++  payload[1].iov_base = addr;
++  payload[1].iov_len = addrlen;
++
++  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 2);
++
++  rio_dbg_printf ("%s[%u]: sockfd = %u, addr = %lx, addrlen = %u -- res = %u\n",
++		  __FUNCTION__, mid, sockfd, addr, addrlen, res);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  return res;
++}
+diff --git a/remote_io/pcn_close.c b/remote_io/pcn_close.c
+new file mode 100644
+index 0000000000..8025d0f69e
+--- /dev/null
++++ b/remote_io/pcn_close.c
+@@ -0,0 +1,66 @@
++/* pcn_open needs to be seperated from rio_open because rtld uses
++   libc_pic.so when linking to establish a map file containing all of
++   the libc dependencies. This is complicated because both rtld and
++   libc use the same open64.c function to implement open64, but we
++   don't want rtld to use pcn_open because the RIO server may not be
++   setup yet. Hence, rio_open needs to be separated from pcn_openat so
++   that it may use malloc, free, and rio_printf.  */
++
++#include <sysdep-cancel.h>
++
++#include <popcorn.h>
++#include "remote_io.h"
++#include "message.h"
++#include "server.h"
++#include "local_io.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++// TODO: update to close any file descriptors locally if they used by mmap
++int
++pcn_close (int fd)
++{
++  struct pcn_msg_io_close msg;
++  struct pcn_msg_hdr ack;
++  int res;
++  int mid = rio_msg_id ();
++
++  if (!pd->pcn_remote_io_active)
++    return lio_close (fd);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  msg.close.fd = fd;
++
++  msg.hdr.msg_type = PCN_TYPE_SYSCALL;
++  msg.hdr.msg_kind = PCN_SYS_CLOSE;
++  msg.hdr.msg_id = mid;
++  msg.hdr.msg_async = PCN_SEND_NORET;
++  msg.hdr.msg_size = sizeof (msg);
++
++  //rio_dbg_printf ("%s[%u]: closing file descriptor %u\n",
++  //		  __FUNCTION__, mid, fd);
++
++  //rio_dbg_printf ("%s[%u]: sending %u bytes\n", __FUNCTION__, mid, msg.hdr.msg_size);
++  res = pcn_send (pd->pcn_server_sockfd, (struct pcn_msg_hdr *)&msg);
++  if (res < 0)
++    lio_error ("%s[%u]: failed to send close request. res = %u\n",
++	       __FUNCTION__, mid, res);
++
++  res = lio_get_msg (pd->pcn_server_sockfd, &ack, sizeof (struct pcn_msg_hdr));
++  if (res < sizeof (struct pcn_msg_hdr))
++    lio_error ("%s[%u]: failed to receive response from server\n",
++	       __FUNCTION__, mid);
++
++  if (ack.msg_type == PCN_CTL_SYNC)
++    rio_send_file (&ack);
++
++  res = lio_close (fd);
++
++  rio_dbg_printf ("%s[%u]: closed file descriptor %u -- res = %u\n",
++		  __FUNCTION__, mid, fd, ack.msg_size);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  return res;
++}
+diff --git a/remote_io/pcn_connect.c b/remote_io/pcn_connect.c
+new file mode 100644
+index 0000000000..9156bbe984
+--- /dev/null
++++ b/remote_io/pcn_connect.c
+@@ -0,0 +1,48 @@
++#include <string.h>
++#include <errno.h>
++#include <sys/socket.h>
++#include <sysdep-cancel.h>
++#include <popcorn.h>
++#include "remote_io.h"
++#include "message.h"
++#include "server.h"
++#include "local_io.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++int
++pcn_connect (int sockfd, const void *addr, int addrlen)
++{
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_bind msg;
++  struct iovec payload[2];
++  int res;
++  int mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_connect_raw (sockfd, addr, addrlen);
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_CONNECT;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_SYNC;
++  hdr.msg_size = sizeof (msg) + addrlen;
++
++  msg.sockfd = sockfd;
++  msg.addrlen = addrlen;
++
++  payload[0].iov_base = &msg;
++  payload[0].iov_len = sizeof (msg);
++  payload[1].iov_base = addr;
++  payload[1].iov_len = addrlen;
++
++  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 2);
++
++  rio_dbg_printf ("%s[%u]: sockfd = %u, addr = %lx, addrlen = %u -- res = %u, errno = %u\n",
++		  __FUNCTION__, mid, sockfd, addr, addrlen, res, errno);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  return res;
++}
 diff --git a/remote_io/pcn_epoll.c b/remote_io/pcn_epoll.c
 new file mode 100644
-index 0000000000..f21b427140
+index 0000000000..cb9613300b
 --- /dev/null
 +++ b/remote_io/pcn_epoll.c
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,123 @@
 +#include <sysdep.h>
 +#include <sys/syscall.h>
 +#include <sys/epoll.h>
@@ -2399,11 +2963,9 @@ index 0000000000..f21b427140
 +  hdr.msg_async = PCN_SEND_SYNC;
 +  hdr.msg_size = sizeof (hdr);
 +
-+  rio_dbg_printf ("%s[%u]: size = %u\n", __FUNCTION__, mid, size);
-+
 +  res = pcn_send (pd->pcn_server_sockfd, &hdr);
 +
-+  rio_dbg_printf ("%s[%u]: res = %u\n", __FUNCTION__, mid, res);
++  rio_dbg_printf ("%s[%u]: size = %u -- res = %u\n", __FUNCTION__, mid, size, res);
 +
 +  //lio_assert_empty_socket (pd->pcn_server_sockfd);
 +
@@ -2441,14 +3003,12 @@ index 0000000000..f21b427140
 +  msg.arg1 = op;
 +  msg.arg2 = fd;
 +
-+  rio_dbg_printf ("%s[%u]: epfd = %u, op = %x, fd = %u, event = %x\n",
-+		  __FUNCTION__, mid, epfd, op, fd, event);
-+
 +  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 2);
 +
 +  //lio_assert_empty_socket (pd->pcn_server_sockfd);
 +
-+  rio_dbg_printf ("%s[%u]: res = %u\n", __FUNCTION__, mid, res);
++  rio_dbg_printf ("%s[%u]: epfd = %u, op = %x, fd = %u, event = %x -- res = %u\n",
++		  __FUNCTION__, mid, epfd, op, fd, event, res);
 +
 +  return res;
 +}
@@ -2460,7 +3020,7 @@ index 0000000000..f21b427140
 +  struct pcn_msg_hdr hdr;
 +  struct pcn_msg_epoll msg;
 +  struct iovec payload[1];
-+  ssize_t res;
++  ssize_t res, revents;
 +  int mid = rio_msg_id ();
 +
 +  /* Check if the server is down.  */
@@ -2483,27 +3043,142 @@ index 0000000000..f21b427140
 +  msg.arg1 = maxevents;
 +  msg.arg2 = timeout;
 +
-+  rio_dbg_printf ("%s[%u]: epfd = %u, events = %x, maxevents = %u, timeout = %u\n",
-+		  __FUNCTION__, mid, epfd, events, maxevents, timeout);
++  revents = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 1);
 +
-+  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 1);
++  if (revents > 0)
++    res = lio_get_msg (pd->pcn_server_sockfd, events,
++		       revents * sizeof (struct epoll_event));
 +
-+  if (res > 0)
-+    res = get_msg (pd->pcn_server_sockfd, events,
-+		   res * sizeof (struct epoll_event));
++  rio_dbg_printf ("%s[%u]: epfd = %u, events = %x, maxevents = %u, timeout = %u -- res = %u\n",
++		  __FUNCTION__, mid, epfd, events, maxevents, timeout, revents);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  return revents;
++}
+diff --git a/remote_io/pcn_fallocate.c b/remote_io/pcn_fallocate.c
+new file mode 100644
+index 0000000000..108b18fc1a
+--- /dev/null
++++ b/remote_io/pcn_fallocate.c
+@@ -0,0 +1,53 @@
++#include <string.h>
++#include <sysdep-cancel.h>
++#include <popcorn.h>
++#include "remote_io.h"
++#include "message.h"
++#include "server.h"
++#include "local_io.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++ssize_t
++pcn_fallocate (int fd, int mode, off_t offset, off_t len)
++{
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_fallocate msg;
++  struct iovec payload[1];
++  ssize_t res;
++  int mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_fallocate (fd, mode, offset, len);
 +
 +  //lio_assert_empty_socket (pd->pcn_server_sockfd);
 +
-+  rio_dbg_printf ("%s[%u]: res = %u\n", __FUNCTION__, mid, res);
++  msg.fd = fd;
++  msg.mode = mode;
++  msg.offset = offset;
++  msg.len = len;
++
++  payload[0].iov_base = &msg;
++  payload[0].iov_len = sizeof (msg);
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_FALLOCATE;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_SYNC;
++  hdr.msg_size = sizeof (msg);
++
++//  rio_dbg_printf ("%s[%u]: reading %u from fd %u into %lx\n",
++//_		  FUNCTION__, mid, count, fd, buf);
++
++  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 1);
++
++  rio_dbg_printf ("%s[%u]: fd = %u, mode = %u, offset = %lx, len = %u -- res = %u\n",
++		  __FUNCTION__, mid, fd, mode, offset, len, res);
++
++  //rio_dbg_printf ("%s: %s\n", __FUNCTION__, buf);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  return res;
++}
+diff --git a/remote_io/pcn_fcntl.c b/remote_io/pcn_fcntl.c
+new file mode 100644
+index 0000000000..82aaac21b4
+--- /dev/null
++++ b/remote_io/pcn_fcntl.c
+@@ -0,0 +1,52 @@
++/* At present, the RIO server only supports F_GETFL, F_SETFL,
++   and F_GETFD.  */
++
++#include <fcntl.h>
++#include <sysdep-cancel.h>
++#include <popcorn.h>
++#include "remote_io.h"
++#include "message.h"
++#include "server.h"
++#include "local_io.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++int
++pcn_fcntl (int fd, int cmd, void *arg)
++{
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_fcntl msg;
++  struct iovec payload[1];
++  int res;
++  int mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_fcntl (fd, cmd, arg);
++
++  //lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  msg.fd = fd;
++  msg.cmd = cmd;
++  msg.arg = arg;
++
++  payload[0].iov_base = &msg;
++  payload[0].iov_len = sizeof (msg);
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_FCNTL;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_SYNC;
++  hdr.msg_size = sizeof (msg);
++
++  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 1);
++
++  rio_dbg_printf ("%s[%u]: fd = %u, cmd = %x, arg = %lx -- res = %x\n",
++		  __FUNCTION__, mid, fd, cmd, arg, res);
++
++  //rio_dbg_printf ("%s: %s\n", __FUNCTION__, buf);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
 +
 +  return res;
 +}
 diff --git a/remote_io/pcn_fxstatat.c b/remote_io/pcn_fxstatat.c
 new file mode 100644
-index 0000000000..1b866bc79b
+index 0000000000..d8db8f33a7
 --- /dev/null
 +++ b/remote_io/pcn_fxstatat.c
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,80 @@
 +#include <string.h>
 +#include <sysdep.h>
 +#include <sys/syscall.h>
@@ -2532,7 +3207,8 @@ index 0000000000..1b866bc79b
 +
 +  //lio_assert_empty_socket (pd->pcn_server_sockfd);
 +
-+  rio_dbg_printf ("%s[%u]: sizeof (struct stat) = %u\n", __FUNCTION__, mid, sizeof (struct stat));
++//  rio_dbg_printf ("%s[%u]: sizeof (struct stat) = %u\n",
++//		  __FUNCTION__, mid, sizeof (struct stat));
 +
 +  msg.fd = fd;
 +  msg.flag = flag;
@@ -2548,20 +3224,21 @@ index 0000000000..1b866bc79b
 +  hdr.msg_kind = PCN_SYS_FXSTATAT;
 +  hdr.msg_id = mid;
 +  hdr.msg_async = PCN_SEND_ASYNC;
-+
-+  rio_dbg_printf ("%s[%u]: fd = %u, flag = %x, file = '%s'\n",
-+		  __FUNCTION__, mid, fd, flag, file);
++  hdr.msg_size = msg.size;
 +
 +  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 2);
-+  res = get_msg (pd->pcn_server_sockfd, &rmsg, sizeof (rmsg));
++  res = lio_get_msg (pd->pcn_server_sockfd, &rmsg, sizeof (rmsg));
 +
-+  rio_dbg_printf ("%s[%u]: dev = %x, ino = %x, mode = %u, nlink = %x, uid = %x, gid = %x\n",
-+		  __FUNCTION__, mid, rmsg.st_dev, rmsg.st_ino, rmsg.st_mode, rmsg.st_nlink,
-+		  rmsg.st_uid, rmsg.st_gid);
-+  rio_dbg_printf ("%s[%u]: rdev = %x, size = %u, blksize = %x, blocks = %u\n", __FUNCTION__,
-+		  mid, rmsg.st_rdev, rmsg.st_size, rmsg.st_blksize, rmsg.st_blocks);
++  rio_dbg_printf ("%s[%u]: fd = %u, flag = %x, file = '%s' -> dev = %x, "
++		  "ino = %x, mode = %u, nlink = %x, uid = %x, gid = %x, "
++		  "rdev = %x, size = %u, blksize = %x, blocks = %u\n",
++		  __FUNCTION__, mid, fd, flag, file,
++		  rmsg.st_dev, rmsg.st_ino, rmsg.st_mode,
++		  rmsg.st_nlink, rmsg.st_uid, rmsg.st_gid,
++		  rmsg.st_rdev, rmsg.st_size,
++		  rmsg.st_blksize, rmsg.st_blocks);
 +
-+  //lio_assert_empty_socket (pd->pcn_server_sockfd);
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
 +
 +  st->st_dev = rmsg.st_dev;
 +  st->st_ino = rmsg.st_ino;
@@ -2577,16 +3254,131 @@ index 0000000000..1b866bc79b
 +  st->st_mtim = rmsg.st_mtim;
 +  st->st_ctim = rmsg.st_ctim;
 +
-+  rio_dbg_printf ("%s[%u]: res = %u, filesize = %u\n", __FUNCTION__, mid, res, st->st_size);
++//  rio_dbg_printf ("%s[%u]: res = %u, filesize = %u\n",
++//		  __FUNCTION__, mid, res, st->st_size);
++
++  return res;
++}
+diff --git a/remote_io/pcn_getcwd.c b/remote_io/pcn_getcwd.c
+new file mode 100644
+index 0000000000..b22d7d86ad
+--- /dev/null
++++ b/remote_io/pcn_getcwd.c
+@@ -0,0 +1,53 @@
++#include <string.h>
++#include <sysdep-cancel.h>
++#include <popcorn.h>
++#include "remote_io.h"
++#include "message.h"
++#include "server.h"
++#include "local_io.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++int
++pcn_getcwd (char *buf, size_t size)
++{
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_read msg;
++  ssize_t res;
++  int mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_getcwd (buf, size);
++
++  //lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_GETCWD;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_NORET;
++  hdr.msg_size = size;
++
++//  rio_dbg_printf ("%s[%u]: reading %u from fd %u into %lx\n",
++//_		  FUNCTION__, mid, count, fd, buf);
++
++  res = lio_send_msg (pd->pcn_server_sockfd, &hdr, sizeof (hdr));
++
++  res = lio_get_msg (pd->pcn_server_sockfd, &msg, sizeof (msg));
++
++  if (res <= 0)
++    {
++      rio_dbg_printf ("%s[%u]: res = %x\n", __FUNCTION__, mid, res);
++      return res;
++    }
++
++  res = lio_get_msg (pd->pcn_server_sockfd, buf, msg.cnt);
++
++  rio_dbg_printf ("%s[%u]: cwd = %s\n",__FUNCTION__, mid, buf);
++
++  //rio_dbg_printf ("%s: %s\n", __FUNCTION__, buf);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  return res;
++}
+diff --git a/remote_io/pcn_listen.c b/remote_io/pcn_listen.c
+new file mode 100644
+index 0000000000..b753e1943c
+--- /dev/null
++++ b/remote_io/pcn_listen.c
+@@ -0,0 +1,49 @@
++#include <string.h>
++#include <sys/socket.h>
++#include <sysdep-cancel.h>
++#include <popcorn.h>
++#include "remote_io.h"
++#include "message.h"
++#include "server.h"
++#include "local_io.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++int
++pcn_listen (int sockfd, int backlog)
++{
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_listen msg;
++  struct iovec payload[1];
++  int res;
++  int mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_listen (sockfd, backlog);
++
++  //lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_LISTEN;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_SYNC;
++  hdr.msg_size = sizeof (msg);
++
++  msg.sockfd = sockfd;
++  msg.backlog = backlog;
++
++  payload[0].iov_base = &msg;
++  payload[0].iov_len = sizeof (msg);
++
++  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 1);
++
++  rio_dbg_printf ("%s[%u]: sockfd = %u, backlog = %u -- res = %u\n",
++		  __FUNCTION__, mid, sockfd, backlog, res);
++
++  //rio_dbg_printf ("%s: %s\n", __FUNCTION__, buf);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
 +
 +  return res;
 +}
 diff --git a/remote_io/pcn_mmap.c b/remote_io/pcn_mmap.c
 new file mode 100644
-index 0000000000..6738fbd007
+index 0000000000..855659b7a1
 --- /dev/null
 +++ b/remote_io/pcn_mmap.c
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,192 @@
 +#include <string.h>
 +#include <sysdep.h>
 +#include <sys/syscall.h>
@@ -2607,10 +3399,19 @@ index 0000000000..6738fbd007
 +do_pcn_open_mmap (struct pcn_msg_hdr *hdr, int fd)
 +{
 +  struct pcn_msg_open *omsg = alloca (hdr->msg_size);
++  struct pcn_msg_hdr ack;
 +  int newfd, res, flags;
 +  char *name;
 +
-+  res = get_msg (pd->pcn_server_sockfd, omsg, hdr->msg_size);
++  ack.msg_id = hdr->msg_id;
++  ack.msg_type = PCN_TYPE_CONTROL;
++  ack.msg_kind = PCN_CTL_ACK;
++  ack.msg_async = PCN_SEND_NORET;
++  ack.msg_size = sizeof (ack);
++
++  pcn_send (fd, &ack);
++
++  res = lio_get_msg (pd->pcn_server_sockfd, omsg, hdr->msg_size);
 +  if (res < hdr->msg_size)
 +    lio_error ("%s[%u]: failed to recive response from the remote_io server\n",
 +	       __FUNCTION__, hdr->msg_id);
@@ -2652,7 +3453,7 @@ index 0000000000..6738fbd007
 +pcn_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 +{
 +  struct pcn_msg_io_mmap msg;
-+  struct pcn_msg_hdr hdr;
++  struct pcn_msg_hdr hdr, ack;
 +  struct pcn_msg_open omsg;
 +  struct iovec payload[1];
 +  ssize_t res = 0;
@@ -2665,9 +3466,6 @@ index 0000000000..6738fbd007
 +    return lio_mmap (addr, length, prot, flags, fd, offset);
 +
 +  //lio_assert_empty_socket (pd->pcn_server_sockfd);
-+
-+  if (fd < 0)
-+    lio_error ("%s[%u]: invalid file descriptor '%u'\n", __FUNCTION__, mid, fd);
 +
 +  /* Don't need to disturb the server if this is an anonymous mapping.  */
 +  if (flags & MAP_ANONYMOUS || flags & MAP_ANON)
@@ -2695,9 +3493,10 @@ index 0000000000..6738fbd007
 +    lio_error ("%s[%u]: failed to send request to the remote_io server\n",
 +	       __FUNCTION__, mid);
 +
-+  res = get_msg (pd->pcn_server_sockfd, &hdr, sizeof (hdr));
++  res = lio_get_msg (pd->pcn_server_sockfd, &hdr, sizeof (hdr));
 +  if (res < sizeof (hdr))
-+    lio_error ("%s[%u]: failed to receive response from server\n", __FUNCTION__, mid);
++    lio_error ("%s[%u]: failed to receive response from server\n",
++	       __FUNCTION__, mid);
 +
 +  /* Has the file already been opened?   */
 +  if (hdr.msg_type == PCN_TYPE_RES && hdr.msg_kind == PCN_SYS_OPEN)
@@ -2714,11 +3513,13 @@ index 0000000000..6738fbd007
 +
 +  res = lio_write (pd->pcn_server_sockfd, &msg.mmap.addr, sizeof (long));
 +
-+  int count;
-+  ioctl (pd->pcn_server_sockfd, FIONREAD, &count);
-+  rio_dbg_printf ("%s[%u]: pending mesage bytes = %u\n", __FUNCTION__, mid, count);
++//  int count;
++//  ioctl (pd->pcn_server_sockfd, FIONREAD, &count);
++//  rio_dbg_printf ("%s[%u]: pending message bytes = %u\n", __FUNCTION__, mid, count);
 +
-+  //lio_assert_empty_socket (pd->pcn_server_sockfd);
++  lio_get_msg (pd->pcn_server_sockfd, &ack, sizeof (ack));
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
 +
 +  return msg.mmap.addr;
 +}
@@ -2728,7 +3529,7 @@ index 0000000000..6738fbd007
 +int
 +pcn_munmap(void *addr, size_t length)
 +{
-+  struct pcn_msg_hdr hdr;
++  struct pcn_msg_hdr hdr, ack;
 +  struct pcn_msg_mmap msg = {0};
 +  struct iovec payload[1];
 +  ssize_t res = 0;
@@ -2750,6 +3551,7 @@ index 0000000000..6738fbd007
 +  hdr.msg_kind = PCN_SYS_MUNMAP;
 +  hdr.msg_id = mid;
 +  hdr.msg_async = PCN_SEND_NORET;
++  hdr.msg_size = sizeof (msg);
 +
 +  rio_dbg_printf ("%s[%u]: addr = %lx, len = %lu\n",
 +		  __FUNCTION__, mid, addr, length);
@@ -2758,16 +3560,23 @@ index 0000000000..6738fbd007
 +  if (res < 0)
 +    lio_error ("%s[%u]: failed to unmap file", __FUNCTION__, mid);
 +
-+  //lio_assert_empty_socket (pd->pcn_server_sockfd);
++  res = lio_get_msg (pd->pcn_server_sockfd, &ack, sizeof (hdr));
++  if (res < 0)
++    lio_error ("%s[%u]: failed to unmap file", __FUNCTION__, mid);
++
++  if (ack.msg_type == PCN_CTL_SYNC)
++    rio_send_file (&ack);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
 +
 +  return lio_munmap (addr, length);
 +}
 diff --git a/remote_io/pcn_open.c b/remote_io/pcn_open.c
 new file mode 100644
-index 0000000000..179cabb071
+index 0000000000..0d323f5232
 --- /dev/null
 +++ b/remote_io/pcn_open.c
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,58 @@
 +/* pcn_open needs to be seperated from rio_open because rtld uses
 +   libc_pic.so when linking to establish a map file containing all of
 +   the libc dependencies. This is complicated because both rtld and
@@ -2815,67 +3624,193 @@ index 0000000000..179cabb071
 +  hdr.msg_kind = PCN_SYS_OPEN;
 +  hdr.msg_id = mid;
 +  hdr.msg_async = 0;
-+
-+  rio_dbg_printf ("%s[%u]: pathname = %s, flags = %x, mode = %x, dirfd = %x\n",
-+		  __FUNCTION__, mid, pathname, msg.flags, msg.mode, msg.dirfd);
++  hdr.msg_size = sizeof (msg) + strlen (pathname) + 1;
 +
 +  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 2);
 +
-+  rio_dbg_printf ("%s[%u]: opening %s, fd = %u\n", __FUNCTION__, mid, pathname, res);
++  rio_dbg_printf ("%s[%u]: pathname = %s, flags = %x, mode = %x, dirfd = %x -- res = %u\n",
++		  __FUNCTION__, mid, pathname, msg.flags, msg.mode, msg.dirfd, res);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  return res;
++}
+diff --git a/remote_io/pcn_pipe.c b/remote_io/pcn_pipe.c
+new file mode 100644
+index 0000000000..1a7f0690e7
+--- /dev/null
++++ b/remote_io/pcn_pipe.c
+@@ -0,0 +1,56 @@
++#include <string.h>
++#include <sysdep-cancel.h>
++#include <popcorn.h>
++#include "remote_io.h"
++#include "message.h"
++#include "server.h"
++#include "local_io.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++int
++pcn_pipe (int pfds[2], int flags)
++{
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_pipe msg;
++  ssize_t res;
++  int mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_pipe2 (pfds, flags);
 +
 +  //lio_assert_empty_socket (pd->pcn_server_sockfd);
 +
-+  return res;
-+}
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_PIPE;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_NORET;
++  hdr.msg_size = flags;
 +
-+// TODO: update to close any file descriptors locally if they used by mmap
-+int
-+pcn_close (int fd)
++//  rio_dbg_printf ("%s[%u]: reading %u from fd %u into %lx\n",
++//_		  FUNCTION__, mid, count, fd, buf);
++
++  res = lio_send_msg (pd->pcn_server_sockfd, &hdr, sizeof (hdr));
++
++  res = lio_get_msg (pd->pcn_server_sockfd, &msg, sizeof (msg));
++
++  if (res < 0 || msg.res)
++    {
++      rio_dbg_printf ("%s[%u]: failed to create pipe - %x / %x\n",
++		      __FUNCTION__, mid, res, msg.res, msg._errno);
++      return msg.res;
++    }
++
++  pfds[0] = msg.pfds[0];
++  pfds[1] = msg.pfds[1];
++
++  rio_dbg_printf ("%s[%u]: flags = %x, pdfs = [%u, %u]\n",
++		  __FUNCTION__, mid, flags, pfds[0], pfds[1]);
++
++  //rio_dbg_printf ("%s: %s\n", __FUNCTION__, buf);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  return msg.res;
++}
+diff --git a/remote_io/pcn_poll.c b/remote_io/pcn_poll.c
+new file mode 100644
+index 0000000000..28da2379ac
+--- /dev/null
++++ b/remote_io/pcn_poll.c
+@@ -0,0 +1,101 @@
++#include <string.h>
++#include <sys/socket.h>
++#include <sysdep-cancel.h>
++#include <poll.h>
++#include <popcorn.h>
++#include "remote_io.h"
++#include "message.h"
++#include "server.h"
++#include "local_io.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++static int
++do_pcn_poll (int syscall, int mid, struct pollfd *fds, int nfds, int timeout,
++	     const struct timespec *tp, const sigset_t *sigmask)
 +{
-+  struct pcn_msg_io_close msg, rmsg;
-+  int res;
-+  int mid = rio_msg_id ();
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_poll *msg;
++  struct iovec payload[2];
++  int res, fdsize, msg_size;
 +
++  fdsize = sizeof (struct pollfd) * nfds;
++  msg_size = fdsize + sizeof (struct pcn_msg_poll);
++
++  msg = alloca (msg_size);
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = syscall;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_NORET;
++  hdr.msg_size = msg_size;
++
++  msg->nfds = nfds;
++  msg->timeout = timeout;
++
++  if (tp == NULL)
++    lio_memset (&msg->tp, 0, sizeof (struct timespec));
++  else
++    msg->tp = *tp;
++
++  if (sigmask == NULL)
++    sigemptyset (&msg->sigmask);
++  else
++    msg->sigmask = *sigmask;
++
++  payload[0].iov_base = msg;
++  payload[0].iov_len = sizeof (struct pcn_msg_poll);
++  payload[1].iov_base = fds;
++  payload[1].iov_len = fdsize;
++
++  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 2);
++
++  lio_get_msg (pd->pcn_server_sockfd, msg, msg_size);
++
++  lio_memcpy (fds, msg->fds, fdsize);
++
++  res = msg->nfds;
++
++  return mid;
++}
++
++int
++pcn_poll (struct pollfd *fds, int nfds, int timeout)
++{
++  int res, mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
 +  if (!pd->pcn_remote_io_active)
-+    return lio_close (fd);
++    return lio_poll (fds, nfds, timeout);
 +
-+  lio_assert_empty_socket (pd->pcn_server_sockfd);
++  res = do_pcn_poll (PCN_SYS_POLL, mid, fds, nfds, timeout,
++		     NULL, NULL);
 +
-+  msg.close.fd = fd;
-+
-+  msg.hdr.msg_type = PCN_TYPE_SYSCALL;
-+  msg.hdr.msg_kind = PCN_SYS_CLOSE;
-+  msg.hdr.msg_id = mid;
-+  msg.hdr.msg_async = PCN_SEND_ASYNC;
-+  msg.hdr.msg_size = sizeof (msg);
-+
-+  rio_dbg_printf ("%s[%u]: closing file descriptor %u\n",
-+		  __FUNCTION__, mid, fd);
-+
-+  rio_dbg_printf ("%s[%u]: sending %u bytes\n", __FUNCTION__, mid, msg.hdr.msg_size);
-+  res = pcn_send (pd->pcn_server_sockfd, (struct pcn_msg_hdr *)&msg);
-+  if (res < 0)
-+    lio_error ("%s[%u]: failed to send close request. res = %u\n",
-+	       __FUNCTION__, mid, res);
-+
-+  res = get_msg (pd->pcn_server_sockfd, &rmsg, sizeof (struct pcn_msg_io_close));
-+  if (res < sizeof (struct pcn_msg_io_close))
-+    lio_error ("%s[%u]: failed to receive response from server\n", __FUNCTION__, mid);
-+
-+  res = lio_close (fd);
-+
-+  rio_dbg_printf ("%s[%u]: res = %u\n", __FUNCTION__, mid, rmsg.close.res);
++  rio_dbg_printf ("%s[%u]: fds = %lx, nfds = %u, timeout = %u -- res = %u\n",
++		  __FUNCTION__, mid, fds, nfds, timeout, res);
 +
 +  lio_assert_empty_socket (pd->pcn_server_sockfd);
 +
 +  return res;
 +}
++
++int
++pcn_ppoll (struct pollfd *fds, int nfds, const struct timespec *tp,
++	   const sigset_t *sigmask)
++{
++  int res, mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_ppoll (fds, nfds, tp, sigmask);
++
++  res = do_pcn_poll (PCN_SYS_PPOLL, mid, fds, nfds, 0,
++		     NULL, NULL);
++
++  rio_dbg_printf ("%s[%u]: fds = %lx, nfds = %u, tp = %x, sigmask = %x -- res = %u\n",
++		  __FUNCTION__, mid, fds, nfds, tp, sigmask, res);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  return res;
++}
+\ No newline at end of file
 diff --git a/remote_io/pcn_read.c b/remote_io/pcn_read.c
 new file mode 100644
-index 0000000000..7c0a577d93
+index 0000000000..f0bf54b994
 --- /dev/null
 +++ b/remote_io/pcn_read.c
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,54 @@
 +#include <string.h>
 +#include <sysdep-cancel.h>
 +#include <popcorn.h>
@@ -2911,30 +3846,31 @@ index 0000000000..7c0a577d93
 +  hdr.msg_kind = PCN_SYS_READ;
 +  hdr.msg_id = mid;
 +  hdr.msg_async = PCN_SEND_SYNC;
++  hdr.msg_size = sizeof (msg);
 +
 +//  rio_dbg_printf ("%s[%u]: reading %u from fd %u into %lx\n",
-+//_		  FUNCTION__, mid, count, fd, buf);
++//		  FUNCTION__, mid, count, fd, buf);
 +
 +  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 1);
 +
 +  if (res > 0)
-+    get_msg (pd->pcn_client_sockfd, buf, res);
-+
-+  //lio_assert_empty_socket (pd->pcn_server_sockfd);
++    lio_get_msg (pd->pcn_server_sockfd, buf, res);
 +
 +  rio_dbg_printf ("%s[%u]: read %u from fd %u into %lx -- res = %u\n",
 +		  __FUNCTION__, mid, count, fd, buf, res);
 +
 +  //rio_dbg_printf ("%s: %s\n", __FUNCTION__, buf);
 +
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
 +  return res;
 +}
 diff --git a/remote_io/pcn_send.c b/remote_io/pcn_send.c
 new file mode 100644
-index 0000000000..5159bf72b6
+index 0000000000..4a3eb9a393
 --- /dev/null
 +++ b/remote_io/pcn_send.c
-@@ -0,0 +1,94 @@
+@@ -0,0 +1,105 @@
 +#include <sysdep-cancel.h>
 +#include <errno.h>
 +
@@ -2954,8 +3890,6 @@ index 0000000000..5159bf72b6
 +  for (i = 0; i < cnt; i++)
 +    size += payload[i].iov_len;
 +
-+  hdr->msg_size = size;
-+
 +  out[0].iov_base = hdr;
 +  out[0].iov_len = sizeof (struct pcn_msg_hdr);
 +
@@ -2964,8 +3898,8 @@ index 0000000000..5159bf72b6
 +    out[i].iov_len = payload[i-1].iov_len;
 +  }
 +
-+  rio_dbg_printf ("%s[%u]: sending message type=%u, kind=%u, size=%u\n",
-+		  __FUNCTION__, hdr->msg_id, hdr->msg_type, hdr->msg_kind, hdr->msg_size);
++//  rio_dbg_printf ("%s[%u]: sending message type=%u, kind=%u, size=%u\n",
++//		  __FUNCTION__, hdr->msg_id, hdr->msg_type, hdr->msg_kind, hdr->msg_size);
 +
 +  /* This write will terminate with a SIGPIPE if the connection
 +     between the client and the host has closed unexpectedly.  */
@@ -2980,7 +3914,7 @@ index 0000000000..5159bf72b6
 +pcn_send_iov (int fd, struct pcn_msg_hdr *hdr, struct iovec *payload, int cnt)
 +{
 +  struct pcn_msg_res rio_res;
-+  int res;
++  int res = 0;
 +
 +  res = do_pcn_send_iov (fd, hdr, payload, cnt);
 +
@@ -2988,9 +3922,9 @@ index 0000000000..5159bf72b6
 +  {
 +    res = lio_read (fd, &rio_res, sizeof (rio_res));
 +
-+    rio_dbg_printf ("%s[%u]: res = %u, errno = %x, id = %u, (%u / %u)\n",
-+		    __FUNCTION__, hdr->msg_id, rio_res.res, rio_res.rio_errno, rio_res.id,
-+		    res, sizeof (rio_res));
++//    rio_dbg_printf ("%s[%u]: res = %u, errno = %x, id = %u, (%u / %u)\n",
++//		    __FUNCTION__, hdr->msg_id, rio_res.res, rio_res.rio_errno, rio_res.id,
++//		    res, sizeof (rio_res));
 +
 +    errno = rio_res.rio_errno;
 +    res = rio_res.res;
@@ -3006,14 +3940,14 @@ index 0000000000..5159bf72b6
 +  int res;
 +
 +  res = lio_write (fd, hdr, hdr->msg_size);
-+  rio_dbg_printf ("%s[%u]: sent %x bytes\n", __FUNCTION__, hdr->msg_id, res);
++  //rio_dbg_printf ("%s[%u]: sent %x bytes\n", __FUNCTION__, hdr->msg_id, res);
 +
 +  if (hdr->msg_async == PCN_SEND_SYNC)
 +  {
 +    res = lio_read (fd, &rio_res, sizeof (rio_res));
 +
-+    rio_dbg_printf ("%s[%u]: res = %x, errno = %x\n",
-+		    __FUNCTION__, hdr->msg_id, rio_res.res, rio_res.rio_errno);
++//    rio_dbg_printf ("%s[%u]: res = %x, errno = %x\n",
++//		    __FUNCTION__, hdr->msg_id, rio_res.res, rio_res.rio_errno);
 +
 +    errno = rio_res.rio_errno;
 +    res = rio_res.res;
@@ -3029,6 +3963,285 @@ index 0000000000..5159bf72b6
 +{
 +  lio_write (fd, res, sizeof (*res));
 +}
++
++int
++pcn_msg_ack (int sockfd, struct pcn_msg_hdr *hdr, int res)
++{
++  struct pcn_msg_hdr ack;
++
++  ack.msg_kind = PCN_TYPE_CONTROL;
++  ack.msg_type = PCN_CTL_ACK;
++  ack.msg_id = hdr->msg_id;
++  ack.msg_size = res;
++
++  return lio_write (sockfd, &ack, sizeof (ack));
++}
+diff --git a/remote_io/pcn_sigaction.c b/remote_io/pcn_sigaction.c
+new file mode 100644
+index 0000000000..76101c5492
+--- /dev/null
++++ b/remote_io/pcn_sigaction.c
+@@ -0,0 +1,113 @@
++#include <sysdep.h>
++#include <sys/syscall.h>
++#include <signal.h>
++#include <popcorn.h>
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++int
++pcn_sigaction (int sig, const struct sigaction *act, struct sigaction *oacc, int size)
++{
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_signal msg;
++  struct iovec payload[1];
++  int res;
++  int mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_rt_sigaction (sig, act, oacc, size);
++
++  //lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_RT_SIGACTION;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_SYNC;
++  hdr.msg_size = sizeof (msg);
++
++  msg.pid = 0;
++  msg.sig = sig;
++  msg.type = PCN_SIG_ADD;
++
++  payload[0].iov_base = &msg;
++  payload[0].iov_len = sizeof (msg);
++
++  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, &payload, 1);
++
++  rio_dbg_printf ("%s[%u]: signal = %u -> res = %u\n", __FUNCTION__, mid, sig, res);
++
++  // Register the signal handler in dl_pcn_data
++  pd->rio_sa_active |= (1LL << msg.sig);
++  pd->rio_sa_sigs[msg.sig].pcn_sa_handler = act->sa_sigaction;
++  pd->rio_sa_sigs[msg.sig].pcn_sa_mask = *(unsigned long *)&act->sa_mask;
++  pd->rio_sa_sigs[msg.sig].pcn_sa_flags = act->sa_flags;
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  return lio_rt_sigaction (sig, act, oacc, size);
++}
++
++int
++pcn_unload_signals (void)
++{
++  int i;
++  int status = pd->pcn_remote_io_active;
++
++  pd->pcn_remote_io_active = 0;
++
++  for (i = 0; i < PCN_NSIG; i++)
++    {
++      uint64_t sig = (1L << i);
++
++      if (pd->rio_sa_active & sig)
++        {
++          struct sigaction dfl;
++
++          rio_dbg_printf ("%s: removing signal '%u'\n", __FUNCTION__, i);
++
++          sigemptyset (&dfl.sa_mask);
++          sigaddset (&dfl.sa_mask, i);
++          dfl.sa_flags = 0;
++          sigaction (i, &dfl, NULL);
++        }
++    }
++
++  pd->pcn_remote_io_active = status;
++
++  return status;
++}
++
++int
++pcn_restore_signals (void)
++{
++  int i;
++  int status = pd->pcn_remote_io_active;
++
++  pd->pcn_remote_io_active = 0;
++
++  for (i = 0; i < PCN_NSIG; i++)
++    {
++      uint64_t sig = (1L << i);
++
++      if (pd->rio_sa_active & sig)
++        {
++          struct sigaction act;
++
++          rio_dbg_printf ("%s: restoring signal '%u'\n", __FUNCTION__, i);
++
++          lio_memcpy (&act.sa_mask, &pd->rio_sa_sigs[i].pcn_sa_mask, sizeof (long));
++          act.sa_flags = pd->rio_sa_sigs[i].pcn_sa_flags;
++          act.sa_handler = pd->rio_sa_sigs[i].pcn_sa_handler;
++          sigaction (i, &act, NULL);
++        }
++    }
++
++  pd->pcn_remote_io_active = status;
++
++  return status;
++}
+diff --git a/remote_io/pcn_socket.c b/remote_io/pcn_socket.c
+new file mode 100644
+index 0000000000..480a190c3a
+--- /dev/null
++++ b/remote_io/pcn_socket.c
+@@ -0,0 +1,140 @@
++#include <string.h>
++#include <sys/socket.h>
++#include <sysdep-cancel.h>
++#include <popcorn.h>
++#include <errno.h>
++#include "remote_io.h"
++#include "message.h"
++#include "server.h"
++#include "local_io.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++int
++pcn_socket (int domain, int type, int protocol)
++{
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_socket msg;
++  struct iovec payload[1];
++  int res;
++  int mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_socket (domain, type, protocol);
++
++  //lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_SOCKET;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_SYNC;
++  hdr.msg_size = sizeof (msg);
++
++  msg.domain = domain;
++  msg.type = type;
++  msg.protocol = protocol;
++
++  payload[0].iov_base = &msg;
++  payload[0].iov_len = sizeof (msg);
++
++  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 1);
++
++  //lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  rio_dbg_printf ("%s[%u]: domain = %x, type = %x, protocol = %x -- res = %u\n",
++		  __FUNCTION__, mid, domain, type, protocol, res);
++
++  //rio_dbg_printf ("%s: %s\n", __FUNCTION__, buf);
++
++  return res;
++}
++
++int
++pcn_setsockopt (int fd, int level, int optname, const void *optval,
++		int len)
++{
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_sockopt msg;
++  struct iovec payload[2];
++  int res;
++  int mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_setsockopt (fd, level, optname, optval, len);
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_SETSOCKOPT;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_SYNC;
++  hdr.msg_size = sizeof (msg) + len;
++
++  msg.sockfd = fd;
++  msg.level = level;
++  msg.optname = optname;
++  msg.optlen = len;
++
++  payload[0].iov_base = &msg;
++  payload[0].iov_len = sizeof (msg);
++  payload[1].iov_base = optval;
++  payload[1].iov_len = len;
++
++  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 2);
++
++  rio_dbg_printf ("%s[%u]: sockfd = %u, level = %u, optname = %u, optval = %x, len = %u -- res = %u\n",
++		  __FUNCTION__, mid, fd, level, optname, optval, len, res);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  return res;
++}
++
++int
++pcn_getsockopt (int fd, int level, int optname, const void *optval,
++		int *len)
++{
++  struct pcn_msg_hdr hdr;
++  struct pcn_msg_sockopt msg, *rmsg;
++  struct iovec payload[2];
++  int res;
++  int mid = rio_msg_id ();
++
++  /* Check if the server is down.  */
++  if (!pd->pcn_remote_io_active)
++    return lio_setsockopt (fd, level, optname, optval, len);
++
++  hdr.msg_type = PCN_TYPE_SYSCALL;
++  hdr.msg_kind = PCN_SYS_GETSOCKOPT;
++  hdr.msg_id = mid;
++  hdr.msg_async = PCN_SEND_NORET;
++  hdr.msg_size = sizeof (msg) + *len;
++
++  msg.sockfd = fd;
++  msg.level = level;
++  msg.optname = optname;
++  msg.optlen = *len;
++
++  payload[0].iov_base = &msg;
++  payload[0].iov_len = sizeof (msg);
++  payload[1].iov_base = optval;
++  payload[1].iov_len = *len;
++
++  rmsg = alloca (hdr.msg_size);
++
++  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 2);
++
++  res = lio_get_msg (pd->pcn_server_sockfd, rmsg, hdr.msg_size);
++
++  res = rmsg->sockfd;
++  errno = rmsg->level;
++  lio_memcpy (optval, rmsg->optval, rmsg->optlen);
++  *len = rmsg->optlen;
++
++  rio_dbg_printf ("%s[%u]: sockfd = %u, level = %u, optname = %u, optval = %x, len = %u -- res = %u\n",
++		  __FUNCTION__, mid, fd, level, optname, optval, *len, res);
++
++  lio_assert_empty_socket (pd->pcn_server_sockfd);
++
++  return res;
++}
+\ No newline at end of file
 diff --git a/remote_io/platform.c b/remote_io/platform.c
 new file mode 100644
 index 0000000000..e4ce5b1905
@@ -3129,12 +4342,424 @@ index 0000000000..1690818300
 +
 +#endif /* _PLATFORM_H */
 +
+diff --git a/remote_io/popcorn_killd.c b/remote_io/popcorn_killd.c
+new file mode 100644
+index 0000000000..c014432470
+--- /dev/null
++++ b/remote_io/popcorn_killd.c
+@@ -0,0 +1,406 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <getopt.h>
++#include <unistd.h>
++#include <signal.h>
++
++#include <ifaddrs.h>
++#include <net/if.h>
++#include <assert.h>
++#include <sys/socket.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#include <netdb.h>
++#include <poll.h>
++
++#include <sys/syscall.h>
++
++#include <elf/popcorn.h>
++#include "message.h"
++#include "local_io.h"
++#include "server.h"
++
++#define OPT_KILL (1 << 0)
++#define OPT_CLIENT (1 << 1)
++#define OPT_SIGNAL (1 << 2)
++
++#define BACKLOG 3
++
++int daemonize = 1;
++int verbose = 0;
++int port = POPCORN_KILLD_PORT;
++
++void
++print_help (char *execname)
++{
++  printf ("%s options:\n", execname);
++  printf ("  -c -> client mode; send kill message to server\n");
++  printf ("  -i [string] -> ip address of the server\n");
++  printf ("  -k -> terminate an active daemon\n");
++  printf ("  -p [int] -> port to listen for signal requests\n");
++  printf ("  -P [int] -> pid to forward a signal to\n");
++  printf ("  -s -> run in standalone mode, without spawning a daemon\n");
++  printf ("  -S [int] -> signal to send\n");
++  printf ("  -v -> emit verbose diagnostics\n");
++  printf ("  -h -> print usage\n");
++}
++
++int
++get_msg (int sock, void *buf, int size)
++{
++  int cnt = 0;
++  int res;
++
++  while (cnt < size)
++  {
++    res = read (sock, &((char *)buf)[cnt], size - cnt);
++
++    if (res <= 0)
++      {
++	//rio_printf ("%s: error - lost data (%d -> %d/%d) - %d\n",
++	//	    __FUNCTION__, size, cnt, res, errno);
++	return res;
++      }
++
++      cnt += res;
++  }
++
++  return cnt;
++}
++
++void
++terminate_daemon (void)
++{
++  struct pcn_msg_signal msg;
++  struct addrinfo hints, *ai;
++  uint32_t myip = pcn_get_ip ();
++  int sockfd, res;
++  char s_addr[INET_ADDRSTRLEN];
++  char buf[INET_ADDRSTRLEN], *s_port;
++
++  memset (&hints, 0, sizeof (hints));
++  hints.ai_family = AF_INET;
++  hints.ai_socktype = SOCK_STREAM;
++  hints.ai_flags = AI_PASSIVE;
++
++  inet_ntop (AF_INET, &myip, s_addr, INET_ADDRSTRLEN);
++  snprintf (buf, INET_ADDRSTRLEN, "%d", POPCORN_KILLD_PORT);
++  s_port = buf;
++
++  if ((res = getaddrinfo (s_addr, s_port, &hints, &ai)) != 0)
++    {
++      printf ("getaddrinfo: %s\n", gai_strerror (res));
++      exit (EXIT_FAILURE);
++    }
++
++  assert (ai != NULL && ai->ai_family == AF_INET);
++
++  sockfd = socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
++  if (sockfd < 0)
++    {
++      perror ("socket");
++      exit (EXIT_FAILURE);
++    }
++
++  if (connect (sockfd, ai->ai_addr, ai->ai_addrlen) == -1)
++    {
++      perror ("connection failed");
++      printf ("   -> %s:%s\n", s_addr, s_port);
++      exit (EXIT_FAILURE);
++    }
++
++  freeaddrinfo (ai);
++
++  msg.pid = 0;
++  msg.sig = SIGKILL;
++  msg.type = PCN_SIG_SHUTDOWN;
++
++  write (sockfd, &msg, sizeof (msg));
++  close (sockfd);
++}
++
++void
++forward_signal (int sig, int pid, uint32_t ip)
++{
++  struct pcn_msg_signal msg;
++  struct addrinfo hints, *ai;
++  int sockfd, res;
++  char s_addr[INET_ADDRSTRLEN];
++  char buf[INET_ADDRSTRLEN], *s_port;
++
++  memset (&hints, 0, sizeof (hints));
++  hints.ai_family = AF_INET;
++  hints.ai_socktype = SOCK_STREAM;
++  hints.ai_flags = AI_PASSIVE;
++
++  inet_ntop (AF_INET, &ip, s_addr, INET_ADDRSTRLEN);
++  snprintf (buf, INET_ADDRSTRLEN, "%d", POPCORN_KILLD_PORT);
++  s_port = buf;
++
++  if (verbose)
++    printf ("Sending signal '%d' to pid '%d' @ ip = '%x'\n", sig, pid, ip);
++
++  if ((res = getaddrinfo (s_addr, s_port, &hints, &ai)) != 0)
++    {
++      printf ("getaddrinfo: %s\n", gai_strerror (res));
++      exit (EXIT_FAILURE);
++    }
++
++  assert (ai != NULL && ai->ai_family == AF_INET);
++
++  sockfd = socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
++  if (sockfd < 0)
++    {
++      perror ("socket");
++      exit (EXIT_FAILURE);
++    }
++
++  if (connect (sockfd, ai->ai_addr, ai->ai_addrlen) == -1)
++    {
++      perror ("connection failed");
++      printf ("   -> %s:%s\n", s_addr, s_port);
++      exit (EXIT_FAILURE);
++    }
++
++  freeaddrinfo (ai);
++
++  msg.pid = pid;
++  msg.sig = sig;
++  msg.type = PCN_SIG_KILL;
++
++  write (sockfd, &msg, sizeof (msg));
++
++  close (sockfd);
++}
++
++int
++init_network (void)
++{
++  uint32_t myip = pcn_get_ip ();
++  int sockfd = -1;
++  struct addrinfo hints, *ai;
++  int res;
++  char buf[INET_ADDRSTRLEN], *s_addr = NULL, *s_port = NULL;
++
++  memset (&hints, 0, sizeof (hints));
++  hints.ai_family = AF_INET;
++  hints.ai_socktype = SOCK_STREAM;
++  hints.ai_flags = AI_PASSIVE;
++
++  snprintf (buf, INET_ADDRSTRLEN, "%d", POPCORN_KILLD_PORT);
++  s_port = buf;
++
++  if ((res = getaddrinfo (s_addr, s_port, &hints, &ai)) != 0)
++    {
++      printf ("getaddrinfo: %s\n", gai_strerror (res));
++      exit (EXIT_FAILURE);
++    }
++
++  assert (ai != NULL && ai->ai_family == AF_INET);
++
++  sockfd = socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
++  if (sockfd < 0)
++    {
++      perror ("socket");
++      exit (EXIT_FAILURE);
++    }
++
++  if (bind (sockfd, ai->ai_addr, ai->ai_addrlen) == -1)
++    {
++      perror ("connection failed");
++      printf ("   -> %s:%s\n", s_addr, s_port);
++      exit (EXIT_FAILURE);
++    }
++
++  if (listen (sockfd, 2) == -1) {
++    perror ("listen");
++    exit (EXIT_FAILURE);
++  }
++
++  freeaddrinfo (ai);
++
++  return sockfd;
++}
++
++void
++event_loop (int sockfd)
++{
++  struct pollfd pfds[3];
++  int fd_count = 1;
++
++  pfds[0].fd = sockfd;
++  pfds[0].events = POLLIN;
++
++  while (1)
++    {
++      int poll_count = poll (pfds, fd_count, -1);
++      struct sockaddr_storage remoteaddr;
++      socklen_t addrlen;
++      int i;
++
++      if (poll_count == -1)
++	{
++	  perror ("poll");
++	  exit (EXIT_FAILURE);
++	}
++
++      for (i = 0; i < fd_count; i++)
++	{
++	  if (pfds[i].revents & POLLIN)
++	    {
++	      int res;
++
++	      if (pfds[i].fd == sockfd)
++		{
++		  addrlen = sizeof (remoteaddr);
++		  int client = accept (sockfd, (struct sockaddr *)&remoteaddr,
++				       &addrlen);
++
++		  if (client < 0)
++		    perror ("Failed to accept client");
++		  else
++		    {
++		      char buf[INET_ADDRSTRLEN];
++		      struct sockaddr_in *sin = (struct sockaddr_in *)&remoteaddr;
++
++		      if (verbose)
++			{
++			  inet_ntop (remoteaddr.ss_family, &sin->sin_addr, buf,
++				     INET_ADDRSTRLEN);
++			  printf ("Accepted client %s\n", buf);
++			}
++
++		      pfds[fd_count].fd = client;
++		      pfds[fd_count].events = POLLIN;
++		      pfds[fd_count].revents = 0;
++		      fd_count++;
++
++		      continue;
++		    }
++		}
++
++	      struct pcn_msg_signal msig;
++
++	      get_msg (pfds[i].fd, &msig, sizeof (msig));
++
++	      if (msig.type == PCN_SIG_SHUTDOWN)
++		{
++		  if (verbose)
++		    printf ("Terminating popcorn_killd\n");
++
++		  exit (EXIT_SUCCESS);
++		}
++
++	      if (verbose)
++		printf ("Forwarding signal '%d' to pid '%d'\n", msig.sig, msig.pid);
++
++	      kill (msig.pid, msig.sig);
++	      close (pfds[i].fd);
++
++	      fd_count--;
++	    }
++	}
++    }
++}
++
++int
++main (int argc, char *argv[])
++{
++  int c;
++  int options = 0;
++  char *hostaddr = NULL;
++  int sig = -1, pid = -1;
++  int sockfd;
++  uint32_t ip = 0;
++
++  /* Deactivate the RIO server.  */
++  static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++  pd->pcn_remote_io_active = 0;
++  close (pd->pcn_server_sockfd);
++
++  while ((c = getopt (argc, argv, "cki:hp:P:sS:v")) != -1)
++    switch (c)
++      {
++      case 'c':
++	options |= OPT_CLIENT;
++	break;
++
++      case 'k':
++	options |= OPT_KILL;
++	break;
++
++      case 'i':
++	hostaddr = strdup (optarg);
++	break;
++
++      case 'p':
++	port = atoi (optarg);
++	break;
++
++      case 'P':
++	pid = atoi (optarg);
++	break;
++
++      case 's':
++	daemonize = 0;
++	break;
++
++      case 'S':
++	options |= OPT_SIGNAL;
++	sig = atoi (optarg);
++	break;
++
++      case 'v':
++	verbose = 1;
++	break;
++
++      case 'h':
++      default:
++	print_help (argv[0]);
++	exit (EXIT_SUCCESS);
++      }
++
++  if (hostaddr != NULL)
++    {
++      ip = inet_addr (hostaddr);
++
++      if (verbose)
++	printf ("ip = %x\n", ip);
++
++      if (ip == INADDR_NONE)
++        {
++	  printf ("Error: Invalid IP address\n");
++	  exit (EXIT_FAILURE);
++	}
++    }
++
++  if (options & OPT_KILL)
++    {
++      terminate_daemon ();
++      exit (EXIT_SUCCESS);
++    }
++  else if (options & OPT_SIGNAL)
++    {
++      if (ip != 0)
++        {
++          forward_signal (sig, pid, ip);
++	  exit (EXIT_SUCCESS);
++	}
++
++      if (verbose)
++	printf ("Sending signal '%d' to pid '%d'\n", sig, pid);
++
++      kill (pid, sig);
++      exit (EXIT_SUCCESS);
++    }
++
++  if (daemonize && fork () != 0)
++    exit (EXIT_SUCCESS);
++
++  sockfd = init_network ();
++
++  event_loop (sockfd);
++
++  return 0;
++}
 diff --git a/remote_io/remote_io.h b/remote_io/remote_io.h
 new file mode 100644
-index 0000000000..21ef4bcc4e
+index 0000000000..1579b66b33
 --- /dev/null
 +++ b/remote_io/remote_io.h
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,78 @@
 +#ifndef REMOTE_IO_H
 +#define REMOTE_IO_H
 +
@@ -3143,6 +4768,10 @@ index 0000000000..21ef4bcc4e
 +#include <sys/uio.h>
 +
 +extern int pcn_remote_io_active;
++
++struct epoll_event;
++struct sigaction;
++struct pollfd;
 +
 +/* On a server process, pcn_server_sockfd represents the socket connection
 + * to the primary server if necessary. pcn_client_sockfd represents the
@@ -3175,10 +4804,30 @@ index 0000000000..21ef4bcc4e
 +			  struct epoll_event *event);
 +extern int pcn_epoll_wait (int ver, int epfd, struct epoll_event *events,
 +			   int maxevents, int timeout);
++extern int pcn_poll (struct pollfd *fds, int nfds, int timeout);
++extern int pcn_ppoll (struct pollfd *fds, int nfds, const struct timespec *tp,
++		      const sigset_t *sigmask);
++extern int pcn_sigaction (int sig, const struct sigaction *act,
++			  struct sigaction *oacc, int size);
++extern int pcn_fcntl (int fd, int mode, void *arg);
++extern int pcn_getcwd (char *buf, size_t size);
++extern int pcn_pipe (int pfds[2], int flags);
++
++extern int pcn_socket (int domain, int type, int protocol);
++extern int pcn_getsockopt (int fd, int level, int optname, const void *optval,
++			   int *len);
++extern int pcn_setsockopt (int fd, int level, int optname, const void *optval,
++			   int len);
++extern int pcn_bind (int sockfd, const void *addr, int addrlen);
++extern int pcn_listen (int sockfd, int backlog);
++extern int pcn_accept (int sockfd, void *addr, int *addrlen);
++extern int pcn_connect (int sockfd, const void *addr, int addrlen);
 +
 +extern int pcn_server_connect (uint32_t ip);
 +extern void pcn_start_server (void);
 +extern void pcn_migrate (void);
++extern int pcn_unload_signals (void);
++extern int pcn_restore_signals (void);
 +
 +extern void rio_printf (const char *restrict str, ...);
 +extern int rio_dbg_printf (const char *fmt, ...);
@@ -3189,12 +4838,241 @@ index 0000000000..21ef4bcc4e
 +extern void dump_pcn_data (void);
 +
 +#endif
+diff --git a/remote_io/rio_accept.c b/remote_io/rio_accept.c
+new file mode 100644
+index 0000000000..26ce65c196
+--- /dev/null
++++ b/remote_io/rio_accept.c
+@@ -0,0 +1,50 @@
++/* read system call forwarding  */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++#include <remote_io.h>
++#include <message.h>
++#include <sys/socket.h>
++#include <syscall.h>
++#include <unistd.h>
++#include <errno.h>
++#include <popcorn.h>
++#include <sysdep-cancel.h>
++
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
++
++int
++rio_get_accept (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_bind *msg;
++  int res;
++
++  msg = alloca (hdr->msg_size);
++
++  res = lio_get_msg (fd, msg, hdr->msg_size);
++  if (res < sizeof (msg))
++    lio_error ("%s[%u]: failed to receive accept message\n",
++	       __FUNCTION__, hdr->msg_id);
++
++  errno = 0;
++  msg->sockfd = lio_accept_raw (msg->sockfd, (void *)msg->addr, &msg->addrlen);
++  msg->addrlen = errno;
++
++  if (msg->sockfd >= 0)
++    rio_fd_open_special (msg->sockfd, RIO_FD_ACCEPT);
++
++  rio_dbg_printf ("%s[%u]: sockfd = %u, addr = %lx, addrlen = %u -- res = %u\n",
++		  __FUNCTION__, hdr->msg_id, msg->sockfd, msg->addr,
++		  msg->addrlen);
++
++  lio_send_msg (fd, msg, hdr->msg_size);
++
++  //lio_assert_empty_socket (fd);
++
++  return 0;
++}
+diff --git a/remote_io/rio_bind.c b/remote_io/rio_bind.c
+new file mode 100644
+index 0000000000..6d4b750beb
+--- /dev/null
++++ b/remote_io/rio_bind.c
+@@ -0,0 +1,48 @@
++/* read system call forwarding  */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++#include <remote_io.h>
++#include <message.h>
++#include <sys/socket.h>
++#include <syscall.h>
++#include <unistd.h>
++#include <errno.h>
++#include <popcorn.h>
++#include <sysdep-cancel.h>
++
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
++
++int
++rio_get_bind (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_bind *msg;
++  struct pcn_msg_res ack;
++  int res;
++
++  msg = alloca (hdr->msg_size);
++
++  res = lio_get_msg (fd, msg, hdr->msg_size);
++  if (res < sizeof (msg))
++    lio_error ("%s[%u]: failed to receive bind message\n",
++	       __FUNCTION__, hdr->msg_id);
++
++  errno = 0;
++  ack.res = lio_bind_raw (msg->sockfd, (void *)msg->addr, msg->addrlen);
++  ack.rio_errno = errno;
++
++  rio_dbg_printf ("%s[%u]: sockfd = %u, addr = %lx, addrlen = %u -- res = %u\n",
++		  __FUNCTION__, hdr->msg_id, msg->sockfd, msg->addr,
++		  msg->addrlen);
++
++  lio_send_msg (fd, &ack, sizeof (ack));
++
++  //lio_assert_empty_socket (fd);
++
++  return 0;
++}
+diff --git a/remote_io/rio_close.c b/remote_io/rio_close.c
+new file mode 100644
+index 0000000000..37a725634b
+--- /dev/null
++++ b/remote_io/rio_close.c
+@@ -0,0 +1,59 @@
++/* open system call forwarding -- open, creat, and openat  */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++#include <remote_io.h>
++#include <message.h>
++#include <sys/socket.h>
++#include <syscall.h>
++#include <unistd.h>
++#include <fcntl.h>
++#include <errno.h>
++#include <popcorn.h>
++#include <sysdep-cancel.h>
++
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
++
++int
++rio_get_close (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_close msg;
++  struct fdinfo *fdp;
++  int res, rclose;
++
++  res = lio_get_msg (fd, &msg, sizeof (msg));
++
++  lio_assert_empty_socket (fd);
++
++  fdp = rio_fd_find (msg.fd);
++
++  if (fdp == NULL)
++    lio_error ("%s[%u]: ERROR: missing data for fd = %u\n",
++	       __FUNCTION__, hdr->msg_id, msg.fd);
++
++  if (fdp->maps == 0 && (fdp->status & RIO_FD_DIRTY))
++    rio_file_sync (fd, hdr->msg_id, fdp);
++
++  rclose = lio_close (msg.fd);
++
++  rio_printf ("%s[%u]: closing '%s', fd = %d (mappings = %d) -- res = %d, errno = %d\n",
++	      __FUNCTION__, hdr->msg_id, fdp->name, fdp->fd, fdp->maps, rclose, errno);
++
++  rio_fd_rm (fdp);
++
++  fdp->fd = -rand ();
++
++  if (fdp->maps == 0)
++    free (fdp);
++  else
++    rio_fd_add_closed (fdp);
++
++  pcn_msg_ack (fd, hdr, 0);
++
++  return 0;
++}
+diff --git a/remote_io/rio_connect.c b/remote_io/rio_connect.c
+new file mode 100644
+index 0000000000..720b631c05
+--- /dev/null
++++ b/remote_io/rio_connect.c
+@@ -0,0 +1,48 @@
++/* read system call forwarding  */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++#include <remote_io.h>
++#include <message.h>
++#include <sys/socket.h>
++#include <syscall.h>
++#include <unistd.h>
++#include <errno.h>
++#include <popcorn.h>
++#include <sysdep-cancel.h>
++
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
++
++int
++rio_get_connect (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_bind *msg;
++  struct pcn_msg_res ack;
++  int res;
++
++  msg = alloca (hdr->msg_size);
++
++  res = lio_get_msg (fd, msg, hdr->msg_size);
++  if (res < sizeof (msg))
++    lio_error ("%s[%u]: failed to receive bind message\n",
++	       __FUNCTION__, hdr->msg_id);
++
++  errno = 0;
++  ack.res = lio_connect_raw (msg->sockfd, (void *)msg->addr, msg->addrlen);
++  ack.rio_errno = errno;
++
++  rio_printf ("%s[%u]: sockfd = %u, addr = %lx, addrlen = %u -- res = %d, errno = %d\n",
++	      __FUNCTION__, hdr->msg_id, msg->sockfd, msg->addr,
++	      msg->addrlen, ack.res, errno);
++
++  lio_send_msg (fd, &ack, sizeof (ack));
++
++  //lio_assert_empty_socket (fd);
++
++  return 0;
++}
 diff --git a/remote_io/rio_epoll.c b/remote_io/rio_epoll.c
 new file mode 100644
-index 0000000000..817396f45b
+index 0000000000..9c21b992c6
 --- /dev/null
 +++ b/remote_io/rio_epoll.c
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,86 @@
 +#include <sysdep.h>
 +#include <sys/syscall.h>
 +#include <sys/epoll.h>
@@ -3209,10 +5087,11 @@ index 0000000000..817396f45b
 +{
 +  struct pcn_msg_res res;
 +
-+  rio_printf ("%s:\n", __FUNCTION__);
-+
 +  res.res = lio_epoll_create1 (0);
 +  res.rio_errno = errno;
++
++  if (res.res >= 0)
++    rio_fd_open_special (res.res, RIO_FD_EPOLL);
 +
 +  rio_printf ("%s[%u]: epfd = %d, errno = %d\n",
 +	      __FUNCTION__, hdr->msg_id, res.res, res.rio_errno);
@@ -3232,7 +5111,7 @@ index 0000000000..817396f45b
 +
 +  msg = malloc (sizeof (struct pcn_msg_epoll) + sizeof (struct epoll_event));
 +
-+  res.res = get_msg (fd, msg, hdr->msg_size);
++  res.res = lio_get_msg (fd, msg, hdr->msg_size);
 +
 +  res.res = __do_epoll_ctl (msg->ver, msg->epfd, msg->arg1, msg->arg2,
 +			    (struct epoll_event *)msg->events);
@@ -3258,7 +5137,7 @@ index 0000000000..817396f45b
 +  struct pcn_msg_res res;
 +  struct epoll_event *events;
 +  
-+  res.res = get_msg (fd, &msg, hdr->msg_size);
++  res.res = lio_get_msg (fd, &msg, hdr->msg_size);
 +
 +  events = malloc (sizeof (struct epoll_event) * msg.arg1);
 +
@@ -3270,7 +5149,8 @@ index 0000000000..817396f45b
 +  pcn_res (fd, &res);
 +
 +  rio_printf ("%s[%u]: epfd = %u, maxevents = %u, timeout = %u, ver = %u -> %u\n",
-+	      __FUNCTION__, hdr->msg_id, msg.epfd, msg.arg1, msg.arg2, msg.ver, res.res);
++	      __FUNCTION__, hdr->msg_id, msg.epfd, msg.arg1, msg.arg2,
++	      msg.ver, res.res);
 +
 +  if (res.res > 0)
 +    lio_send_msg (fd, events, res.res * sizeof (struct epoll_event));
@@ -3279,12 +5159,112 @@ index 0000000000..817396f45b
 +
 +  return res.res;
 +}
+diff --git a/remote_io/rio_fallocate.c b/remote_io/rio_fallocate.c
+new file mode 100644
+index 0000000000..988a0fe596
+--- /dev/null
++++ b/remote_io/rio_fallocate.c
+@@ -0,0 +1,43 @@
++/* read system call forwarding  */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++#include <remote_io.h>
++#include <message.h>
++#include <sys/socket.h>
++#include <syscall.h>
++#include <unistd.h>
++#include <errno.h>
++#include <popcorn.h>
++#include <sysdep-cancel.h>
++
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
++
++int
++rio_get_fallocate (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_fallocate msg;
++  struct pcn_msg_res res;
++
++  res.res = lio_get_msg (fd, &msg, hdr->msg_size);
++
++  res.res = lio_fallocate (msg.fd, msg.mode, msg.offset, msg.len);
++
++  rio_printf ("%s[%u]: fd = %u, mode = %u, offset = %lx, len = %u -- res = %u\n",
++	      __FUNCTION__, hdr->msg_id, msg.fd, msg.mode, msg.offset,
++	      msg.len, res.res);
++
++  res.rio_errno = errno;
++  res.id = hdr->msg_id;
++
++  lio_send_msg (fd, &res, sizeof (res));
++
++  //lio_assert_empty_socket (fd);
++
++  return 0;
++}
+diff --git a/remote_io/rio_fcntl.c b/remote_io/rio_fcntl.c
+new file mode 100644
+index 0000000000..f8417bf04f
+--- /dev/null
++++ b/remote_io/rio_fcntl.c
+@@ -0,0 +1,45 @@
++/* fcntl system call forwarding.  At present, the RIO server
++   only supports F_GETFL, F_SETFL, and F_GETFD. */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++#include <fcntl.h>
++#include <remote_io.h>
++#include <message.h>
++#include <sys/socket.h>
++#include <syscall.h>
++#include <unistd.h>
++#include <errno.h>
++#include <popcorn.h>
++#include <sysdep-cancel.h>
++
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
++
++int
++rio_get_fcntl (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_fcntl msg;
++  struct pcn_msg_res res;
++
++  res.res = lio_get_msg (fd, &msg, hdr->msg_size);
++
++  res.res = lio_fcntl (msg.fd, msg.cmd, msg.arg);
++
++  rio_printf ("%s[%u]: fd = %u, cmd = %x, arg = %lx -- res = %u\n",
++	      __FUNCTION__, hdr->msg_id, msg.fd, msg.cmd, msg.fd,
++	      res.res);
++
++  res.rio_errno = errno;
++  res.id = hdr->msg_id;
++
++  lio_send_msg (fd, &res, sizeof (res));
++
++  //lio_assert_empty_socket (fd);
++
++  return 0;
++}
 diff --git a/remote_io/rio_fxstatat.c b/remote_io/rio_fxstatat.c
 new file mode 100644
-index 0000000000..04909879b6
+index 0000000000..d0c18812a3
 --- /dev/null
 +++ b/remote_io/rio_fxstatat.c
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,71 @@
 +#include <string.h>
 +#include <sysdep.h>
 +#include <sys/syscall.h>
@@ -3306,7 +5286,7 @@ index 0000000000..04909879b6
 +  INTERNAL_SYSCALL_DECL (err);
 +  struct stat kst;
 +
-+  res.fd = get_msg (fd, msg, hdr->msg_size);
++  res.fd = lio_get_msg (fd, msg, hdr->msg_size);
 +
 +  pfd = rio_fd_find (msg->fd);
 +
@@ -3315,10 +5295,12 @@ index 0000000000..04909879b6
 +
 +  if (pfd != NULL)
 +    rio_printf ("%s[%u]: fd = %u, size = %u, flag = %x, file = '%s' (%s)\n",
-+		__FUNCTION__, hdr->msg_id, msg->fd, msg->size, msg->flag, msg->pathname, pfd->name);
++		__FUNCTION__, hdr->msg_id, msg->fd, msg->size, msg->flag,
++		msg->pathname, pfd->name);
 +  else
 +    rio_printf ("%s[%u]: fd = %u, size = %u, flag = %x, file = '%s'\n",
-+		__FUNCTION__, hdr->msg_id, msg->fd, msg->size, msg->flag, msg->pathname);
++		__FUNCTION__, hdr->msg_id, msg->fd, msg->size, msg->flag,
++		msg->pathname);
 +
 +  res.flag = __do_fxstatat (_STAT_VER, msg->fd, msg->pathname, &kst,
 +			    msg->flag);
@@ -3326,11 +5308,11 @@ index 0000000000..04909879b6
 +  res.size = sizeof (struct pcn_msg_fxstatat);
 +
 +  //rio_printf ("%s[%u]: res = %d, errno = %d\n", __FUNCTION__, hdr->msg_id, res.flag, res.fd);
-+  rio_dbg_printf ("%s[%u]: dev = %x, ino = %x, mode = %u, nlink = %x uid = %x, gid = %x\n",
-+		  __FUNCTION__, hdr->msg_id, kst.st_dev, kst.st_ino, kst.st_mode, kst.st_nlink,
-+		  kst.st_uid, kst.st_gid);
-+  rio_dbg_printf ("%s[%u]: rdev = %x, size = %u, blksize = %x, blocks = %u\n", __FUNCTION__,
-+		  hdr->msg_id, kst.st_rdev, kst.st_size, kst.st_blksize, kst.st_blocks);
++  rio_dbg_printf ("%s[%u]: dev = %x, ino = %x, mode = %u, nlink = %x uid = %x, gid = %x, "
++		  "rdev = %x, size = %u, blksize = %x, blocks = %u\n",
++		  __FUNCTION__, hdr->msg_id, kst.st_dev, kst.st_ino,
++		  kst.st_mode, kst.st_nlink, kst.st_uid, kst.st_gid,
++		  kst.st_rdev, kst.st_size, kst.st_blksize, kst.st_blocks);
 +
 +  res.st_dev = kst.st_dev;
 +  res.st_ino = kst.st_ino;
@@ -3354,12 +5336,110 @@ index 0000000000..04909879b6
 +
 +  return 0;
 +}
+diff --git a/remote_io/rio_getcwd.c b/remote_io/rio_getcwd.c
+new file mode 100644
+index 0000000000..6c1a8f5946
+--- /dev/null
++++ b/remote_io/rio_getcwd.c
+@@ -0,0 +1,41 @@
++/* read system call forwarding  */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++#include <remote_io.h>
++#include <message.h>
++#include <sys/socket.h>
++#include <syscall.h>
++#include <unistd.h>
++#include <errno.h>
++#include <popcorn.h>
++#include <sysdep-cancel.h>
++
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
++
++int
++rio_get_getcwd (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_read *msg;
++  int size = sizeof (struct pcn_msg_read) + hdr->msg_size;
++  int res;
++
++  msg = alloca (size);
++  
++  msg->cnt = lio_getcwd (msg->buf, hdr->msg_size);
++  msg->fd = errno;
++
++  res = lio_send_msg (fd, msg, sizeof (struct pcn_msg_read) + msg->cnt);
++
++  rio_dbg_printf ("%s[%u]: pathname = '%s' -- res = %u\n",
++		  __FUNCTION__, hdr->msg_id, msg->buf, msg->cnt);
++
++  //lio_assert_empty_socket (fd);
++
++  return 0;
++}
+diff --git a/remote_io/rio_listen.c b/remote_io/rio_listen.c
+new file mode 100644
+index 0000000000..1d057164cd
+--- /dev/null
++++ b/remote_io/rio_listen.c
+@@ -0,0 +1,45 @@
++/* read system call forwarding  */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++#include <remote_io.h>
++#include <message.h>
++#include <sys/socket.h>
++#include <syscall.h>
++#include <unistd.h>
++#include <errno.h>
++#include <popcorn.h>
++#include <sysdep-cancel.h>
++
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
++
++int
++rio_get_listen (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_listen msg;
++  struct pcn_msg_res ack;
++  int res;
++
++  res = lio_get_msg (fd, &msg, sizeof (msg));
++  if (res < sizeof (msg))
++    lio_error ("%s[%u]: failed to receive listen message\n",
++	       __FUNCTION__, hdr->msg_id);
++
++  ack.res = lio_listen (msg.sockfd, msg.backlog);
++  ack.rio_errno = errno;
++
++  rio_dbg_printf ("%s[%u]: sockfd = %u, backlog = %u -- res = %u\n",
++		  __FUNCTION__, hdr->msg_id, msg.sockfd, msg.backlog,
++		  ack.res);
++
++  lio_send_msg (fd, &ack, sizeof (ack));
++
++  //lio_assert_empty_socket (fd);
++
++  return 0;
++}
 diff --git a/remote_io/rio_mmap.c b/remote_io/rio_mmap.c
 new file mode 100644
-index 0000000000..435610e59a
+index 0000000000..b3af4a127a
 --- /dev/null
 +++ b/remote_io/rio_mmap.c
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,134 @@
 +/* The Remote I/O Server doesn't actually need to mmap any files. Instead
 +   it just delagates the mapping to the client. The server only needs to ensure
 +   that the client hasa local copy of the mmap'ed file. On munmap, if the mmap
@@ -3384,30 +5464,18 @@ index 0000000000..435610e59a
 +   the local files to ensure that the contents haven't changed between runs.  */
 +static int rio_mmap_cache = 0;
 +
-+static int
-+do_mmap_ack (int sockfd, struct pcn_msg_hdr *hdr, int res)
-+{
-+  struct pcn_msg_hdr ack;
-+
-+  ack.msg_kind = PCN_TYPE_CONTROL;
-+  ack.msg_type = PCN_CTL_ACK;
-+  ack.msg_id = hdr->msg_id;
-+  ack.msg_size = res;
-+
-+  return lio_write (sockfd, &ack, sizeof (ack));
-+}
-+
 +int
 +rio_get_mmap (struct pcn_msg_hdr *hdr, int fd)
 +{
 +  struct pcn_msg_mmap msg;
++  struct pcn_msg_hdr ack;
 +  struct fdinfo *cfd; // Requested fd by the client
 +  int size, res, rfd;
 +
 +  rio_printf ("%s[%u]: received mmap, size = %d\n",
 +	      __FUNCTION__, hdr->msg_id, hdr->msg_size);
 +
-+  size = get_msg (fd, &msg, sizeof (struct pcn_msg_mmap));
++  size = lio_get_msg (fd, &msg, sizeof (struct pcn_msg_mmap));
 +  if (size != hdr->msg_size - sizeof (struct pcn_msg_hdr))
 +    {
 +      rio_printf ("%s[%u]: only received %d of %d bytes\n",
@@ -3424,13 +5492,13 @@ index 0000000000..435610e59a
 +  /* Check if the file has already been opened up locally for
 +      a different mapping.  */
 +  if (cfd->maps > 0)
-+    do_mmap_ack (fd, hdr, cfd->fd);
++    pcn_msg_ack (fd, hdr, cfd->fd);
 +  else
 +    rio_file_copy (fd, hdr->msg_id, cfd);
 +
 +  rio_printf ("%s[%u]: mapping fd = %u, length = %u, flag = %x, file = '%s' -> '%s', maps = %u\n",
-+	      __FUNCTION__, hdr->msg_id, msg.fd, msg.length, cfd->flags, cfd->name,
-+	      cfd->lname, cfd->maps);
++	      __FUNCTION__, hdr->msg_id, msg.fd, msg.length, cfd->flags,
++	      cfd->name, cfd->lname, cfd->maps);
 +
 +  // Instruct client to open up local file
 +  cfd->maps++;
@@ -3440,15 +5508,22 @@ index 0000000000..435610e59a
 +
 +  /* Receive the actuall mapping from the client and add
 +     it to the mmap tree  */
-+  size = get_msg (fd, &msg.addr, sizeof msg.addr);
-+  rio_mmap_add (msg.fd, msg.addr, msg.length, msg.prot, msg.flags);
++  size = lio_get_msg (fd, &msg.addr, sizeof msg.addr);
++  rio_mmap_add (cfd, msg.addr, msg.length, msg.prot, msg.flags);
 +
-+  int count;
-+  ioctl (fd, FIONREAD, &count);
-+  rio_dbg_printf ("%s[%u]: pending mesage bytes = %u\n",
-+		  __FUNCTION__, hdr->msg_id, count);
++//  int count;
++//  ioctl (fd, FIONREAD, &count);
++//  rio_dbg_printf ("%s[%u]: pending message bytes = %u\n",
++//		  __FUNCTION__, hdr->msg_id, count);
 +
 +  //lio_assert_empty_socket (fd);
++
++  ack.msg_id = hdr->msg_id;
++  ack.msg_type = PCN_TYPE_CONTROL;
++  ack.msg_kind = PCN_CTL_ACK;
++  ack.msg_async = PCN_SEND_NORET;
++  ack.msg_size = sizeof (ack);
++  pcn_send (fd, &ack);
 +
 +  return 0;
 +}
@@ -3458,13 +5533,13 @@ index 0000000000..435610e59a
 +{
 +  struct pcn_msg_mmap msg;
 +  struct iovec payload[2];
-+  struct fdinfo *cfd;
++  struct fdinfo *pfd;
 +  struct mmapinfo *mi;
 +  int size;
 +
 +  //rio_printf ("%s: received mmap, size = %d\n", __FUNCTION__, hdr->msg_size);
 +
-+  size = get_msg (fd, &msg, hdr->msg_size);
++  size = lio_get_msg (fd, &msg, hdr->msg_size);
 +  if (size != hdr->msg_size)
 +    {
 +      rio_printf ("%s[%u]: only received %d of %d bytes\n",
@@ -3475,20 +5550,22 @@ index 0000000000..435610e59a
 +  //rio_printf ("%s: unmapping address %lx\n", __FUNCTION__, msg.addr);
 +
 +  mi = rio_mmap_find (msg.addr);
-+  cfd = rio_fd_find (mi->fd);
++  pfd = mi->pfd;
 +
-+  cfd->maps--;
++  pfd->maps--;
 +  rio_mmap_rm (mi);
 +  free (mi);
 +
-+  if (cfd->fd < 0 && cfd->maps == 0)
++  if (pfd->fd < 0 && pfd->maps == 0)
 +    {
-+      if (cfd->status & RIO_FD_DIRTY)
-+	rio_file_sync(fd, hdr->msg_id, cfd);
-+      free (cfd);
++      if (pfd->status & RIO_FD_DIRTY)
++	rio_file_sync(fd, hdr->msg_id, pfd);
++
++      rio_fd_rm_closed (pfd);
++      free (pfd);
 +    }
 +
-+  //do_mmap_ack (fd, hdr, 0);
++  pcn_msg_ack (fd, hdr, 0);
 +
 +  rio_printf ("%s[%u]: unmapping addr = %lx, length = %u\n",
 +	      __FUNCTION__, hdr->msg_id, msg.addr, msg.length);
@@ -3499,10 +5576,10 @@ index 0000000000..435610e59a
 +}
 diff --git a/remote_io/rio_open.c b/remote_io/rio_open.c
 new file mode 100644
-index 0000000000..bec7d9fd70
+index 0000000000..cb2f57d84b
 --- /dev/null
 +++ b/remote_io/rio_open.c
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,47 @@
 +/* open system call forwarding -- open, creat, and openat  */
 +
 +#include <stdio.h>
@@ -3530,19 +5607,17 @@ index 0000000000..bec7d9fd70
 +  struct pcn_msg_open *msg = malloc (hdr->msg_size);
 +  struct pcn_msg_res res;
 +
-+  res.res = get_msg (fd, msg, hdr->msg_size);
++  res.res = lio_get_msg (fd, msg, hdr->msg_size);
 +
-+  rio_printf ("%s[%u]: pathname = %s, flags = %x, mode = %x, dirfd = %d\n",
-+	      __FUNCTION__, hdr->msg_id, msg->pathname, msg->flags,
-+	      msg->mode, msg->dirfd);
-+
++  errno = 0;
 +  res.res = lio_openat (msg->dirfd, msg->pathname, msg->flags, msg->mode);
 +  res.rio_errno = errno;
 +
 +  rio_fd_open (res.res, msg->flags, msg->mode, msg->pathname);
 +
-+  rio_printf ("%s[%u]: opened '%s', fd = %d, errno = %d\n",
-+	      __FUNCTION__, hdr->msg_id, msg->pathname, res.res, res.rio_errno);
++  rio_printf ("%s[%u]: pathname = %s, flags = %x, mode = %x, dirfd = %d -- fd = %d, errno = %d\n",
++	      __FUNCTION__, hdr->msg_id, msg->pathname, msg->flags,
++	      msg->mode, msg->dirfd, res.res, res.rio_errno);
 +
 +  free (msg);
 +
@@ -3552,53 +5627,109 @@ index 0000000000..bec7d9fd70
 +
 +  return 0;
 +}
+diff --git a/remote_io/rio_pipe.c b/remote_io/rio_pipe.c
+new file mode 100644
+index 0000000000..924eafc238
+--- /dev/null
++++ b/remote_io/rio_pipe.c
+@@ -0,0 +1,41 @@
++/* read system call forwarding  */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++#include <remote_io.h>
++#include <message.h>
++#include <sys/socket.h>
++#include <syscall.h>
++#include <unistd.h>
++#include <errno.h>
++#include <popcorn.h>
++#include <sysdep-cancel.h>
++
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
 +
 +int
-+rio_get_close (struct pcn_msg_hdr *hdr, int fd)
++rio_get_pipe (struct pcn_msg_hdr *hdr, int fd)
 +{
-+  struct pcn_msg_close msg;
-+  struct pcn_msg_io_close rmsg;
-+  struct fdinfo *fdp;
++  struct pcn_msg_pipe msg;
++  
++  msg.pfds[0] = -1;
++  msg.pfds[1] = -1;
++
++  msg.res = lio_pipe2 (msg.pfds, hdr->msg_size);
++  msg._errno = errno;
++
++  rio_printf ("%s[%u]: flags = %x, pdfs = [%u, %u] -- res = %u, errno = %u\n",
++	      __FUNCTION__, hdr->msg_id, hdr->msg_size, msg.pfds[0], msg.pfds[1],
++	      msg.res, msg._errno);
++
++  lio_send_msg (fd, &msg, sizeof (msg));
++
++  //lio_assert_empty_socket (fd);
++
++  return 0;
++}
+diff --git a/remote_io/rio_poll.c b/remote_io/rio_poll.c
+new file mode 100644
+index 0000000000..7fd9bf0fed
+--- /dev/null
++++ b/remote_io/rio_poll.c
+@@ -0,0 +1,53 @@
++/* read system call forwarding  */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++#include <remote_io.h>
++#include <message.h>
++#include <sys/socket.h>
++#include <syscall.h>
++#include <unistd.h>
++#include <errno.h>
++#include <popcorn.h>
++#include <sysdep-cancel.h>
++
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
++
++int
++rio_get_poll (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_poll *msg;
 +  int res;
 +
-+  res = get_msg (fd, &msg, sizeof (msg));
++  msg = alloca (hdr->msg_size);
 +
-+  lio_assert_empty_socket (fd);
++  res = lio_get_msg (fd, msg, hdr->msg_size);
++  if (res < sizeof (msg))
++    lio_error ("%s[%u]: failed to receive bind message\n",
++	       __FUNCTION__, hdr->msg_id);
 +
-+  fdp = rio_fd_find (msg.fd);
-+
-+  if (fdp == NULL)
-+    lio_error ("%s[%u]: ERROR: missing data for fd = %u\n",
-+	       __FUNCTION__, hdr->msg_id, msg.fd);
-+
-+  rio_printf ("%s[%u]: closing '%s', fd = %d (mappings = %d)\n",
-+	      __FUNCTION__, hdr->msg_id, fdp->name, fdp->fd, fdp->maps);
-+
-+  rmsg.close.res = lio_close (msg.fd);
-+  rmsg.close.err = errno;
-+  rmsg.hdr.msg_id = hdr->msg_id;
-+  rmsg.hdr.msg_type = PCN_TYPE_RES;
-+  rmsg.hdr.msg_kind = PCN_CTL_ACK;
-+  rmsg.hdr.msg_size = sizeof (rmsg);
-+  rmsg.hdr.msg_async = PCN_SEND_ASYNC;
-+
-+  if (fdp->maps == 0 && (fdp->status & RIO_FD_DIRTY))
-+    rio_file_sync (fd, hdr->msg_id, fdp);
-+
-+  rmsg.close.fd = 0;
-+  rio_fd_rm (fdp);
-+
-+  if (fdp->maps == 0)
-+    free (fdp);
++  if (hdr->msg_kind == PCN_SYS_POLL)
++    res = lio_poll (msg->fds, msg->nfds, msg->timeout);
 +  else
-+    rio_fd_add_closed (fdp);
++    // TODO: account for NULL arguments for tp and sigmask
++    res = lio_ppoll (msg->fds, msg->nfds, &msg->tp, &msg->sigmask);
 +
-+  rio_printf ("%s[%u]: res = %d, errno = %d, fd = %u\n", __FUNCTION__,
-+	      hdr->msg_id, rmsg.close.res, rmsg.close.err, rmsg.close.fd);
++  msg->nfds = res;
++  msg->timeout = errno;
 +
-+  pcn_send (fd, &rmsg);
++  rio_dbg_printf ("%s[%u]: kind = %s, nfds = %u, timeout = %lx -- res = %u\n",
++		  __FUNCTION__, hdr->msg_id,
++		  hdr->msg_kind == PCN_SYS_POLL ? "PCN_SYS_POLL" : "PCN_SYS_PPOLL",
++		  msg->nfds, msg->timeout, res);
 +
-+  lio_assert_empty_socket (fd);
++  lio_send_msg (fd, msg, hdr->msg_size);
++
++  //lio_assert_empty_socket (fd);
 +
 +  return 0;
 +}
@@ -3886,10 +6017,10 @@ index 0000000000..4bcc7b92d1
 \ No newline at end of file
 diff --git a/remote_io/rio_read.c b/remote_io/rio_read.c
 new file mode 100644
-index 0000000000..8139cb3d8f
+index 0000000000..7dfaf7fb18
 --- /dev/null
 +++ b/remote_io/rio_read.c
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,49 @@
 +/* read system call forwarding  */
 +
 +#include <stdio.h>
@@ -3915,21 +6046,17 @@ index 0000000000..8139cb3d8f
 +{
 +  struct pcn_msg_read *msg = malloc (hdr->msg_size);
 +  struct pcn_msg_res res;
-+  struct iovec payload[2];
 +  void *buf;
 +
-+  res.res = get_msg (fd, msg, hdr->msg_size);
-+
-+  rio_printf ("%s[%u]: fd = %u, count = %u\n",
-+	      __FUNCTION__, hdr->msg_id, msg->fd, msg->cnt);
++  res.res = lio_get_msg (fd, msg, hdr->msg_size);
 +
 +  buf = (char *) malloc (msg->cnt);
 +  res.res = lio_read (msg->fd, buf, msg->cnt);
 +  res.rio_errno = errno;
 +  res.id = hdr->msg_id;
 +
-+  rio_printf ("%s[%u]: res = %d, errno = %d\n",
-+	      __FUNCTION__, hdr->msg_id, res.res, res.rio_errno);
++  rio_printf ("%s[%u]: fd = %u, count = %u -- res = %d, errno = %d\n",
++	      __FUNCTION__, hdr->msg_id, msg->fd, msg->cnt, res.res, res.rio_errno);
 +
 +  lio_send_msg (fd, &res, sizeof (res));
 +
@@ -3943,13 +6070,12 @@ index 0000000000..8139cb3d8f
 +
 +  return 0;
 +}
-\ No newline at end of file
 diff --git a/remote_io/rio_server.c b/remote_io/rio_server.c
 new file mode 100644
-index 0000000000..7a3190f3fb
+index 0000000000..95f3ed4c73
 --- /dev/null
 +++ b/remote_io/rio_server.c
-@@ -0,0 +1,669 @@
+@@ -0,0 +1,770 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <stdint.h>
@@ -4034,6 +6160,22 @@ index 0000000000..7a3190f3fb
 +		  pd->rio_debug, pd->pcn_break);
 +}
 +
++int
++rio_disable (void)
++{
++  int t = pd->pcn_remote_io_active;
++
++  pd->pcn_remote_io_active = 0;
++
++  return t;
++}
++
++void
++rio_restore (int t)
++{
++  pd->pcn_remote_io_active = t;
++}
++
 +void
 +pcn_server_init (void)
 +{
@@ -4073,7 +6215,7 @@ index 0000000000..7a3190f3fb
 +  // FWD
 +  pid = wait (&status);
 +  assert (pid == pd->rio_child_pid);
-+  pd->rio_child_pid = -100;
++  //pd->rio_child_pid = -100;
 +}
 +
 +/*
@@ -4087,14 +6229,17 @@ index 0000000000..7a3190f3fb
 +  struct ifaddrs *myaddrs, *ifa;
 +  void *in_addr;
 +  uint32_t ip = 0;
++  int t;
 +
 +  pd->pcn_local_ip = htonl (0x7f000001); /* 127.0.0.1  */
 +
++  t = rio_disable ();
 +  if(getifaddrs(&myaddrs) != 0)
 +    {
 +      perror("getifaddrs");
 +      lio_exit (1);
 +    }
++  rio_restore (t);
 +
 +  for (ifa = myaddrs; ifa != NULL; ifa = ifa->ifa_next)
 +    {
@@ -4124,7 +6269,7 @@ index 0000000000..7a3190f3fb
 +static uint16_t
 +alloc_server_port (void)
 +{
-+  int sockfd = socket (AF_INET, SOCK_STREAM, 0);
++  int sockfd = lio_socket (AF_INET, SOCK_STREAM, 0);
 +  struct addrinfo hints, *ai;
 +  struct sockaddr_in sin;
 +  socklen_t len = sizeof (sin);
@@ -4138,22 +6283,20 @@ index 0000000000..7a3190f3fb
 +  hints.ai_socktype = SOCK_STREAM;
 +  hints.ai_flags = AI_PASSIVE;
 +
-+  if ((res = getaddrinfo (buf, NULL, &hints, &ai)) != 0) {
-+    rio_printf ("%s: %s\n", __FUNCTION__, gai_strerror (res));
-+    lio_exit (EXIT_FAILURE);
-+  }
++  if ((res = getaddrinfo (buf, NULL, &hints, &ai)) != 0)
++    lio_error ("%s: %s\n", __FUNCTION__, gai_strerror (res));
 +
 +  assert (ai != NULL);
 +
-+  if (bind (sockfd, ai->ai_addr, ai->ai_addrlen) < 0) {
-+    rio_printf ("%s: failed to allocate IP port\n", __FUNCTION__);
-+    lio_exit (EXIT_FAILURE);
-+  }
++  if (lio_bind (sockfd, ai->ai_addr, ai->ai_addrlen) < 0)
++    lio_error ("%s: failed to allocate IP port\n", __FUNCTION__);
 +
-+  if (getsockname(sockfd, (struct sockaddr *)&sin, &len) == -1) {
-+    perror("getsockname");
-+    lio_exit (EXIT_FAILURE);
-+  }
++  if (getsockname(sockfd, (struct sockaddr *)&sin, &len) == -1)
++    {
++      rio_disable ();
++      perror("getsockname");
++      lio_exit (EXIT_FAILURE);
++    }
 +
 +  lio_close (sockfd);
 +  freeaddrinfo (ai);
@@ -4164,7 +6307,7 @@ index 0000000000..7a3190f3fb
 +static int
 +connect_to (uint32_t ip, uint16_t port)
 +{
-+  int sockfd, res;
++  int sockfd, res, t;
 +  struct addrinfo hints, *ai;
 +  char s_addr[INET_ADDRSTRLEN], s_port[INET_ADDRSTRLEN];
 +
@@ -4185,18 +6328,22 @@ index 0000000000..7a3190f3fb
 +  if (pd->rio_debug)
 +    rio_printf ("connecting to %s:%s\n", s_addr, s_port);
 +
-+  sockfd = socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
++  sockfd = lio_socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
 +  if (sockfd < 0)
 +    {
++      rio_disable ();
 +      perror ("socket");
 +      lio_exit (EXIT_FAILURE);
 +    }
 +
-+  if (connect (sockfd, ai->ai_addr, ai->ai_addrlen) == -1) {
-+    perror ("connection failed");
-+    rio_printf ("   -> %s:%s\n", s_addr, s_port);
-+    lio_exit (EXIT_FAILURE);
-+  }
++  t = rio_disable ();
++  if (connect (sockfd, ai->ai_addr, ai->ai_addrlen) == -1)
++    {
++      perror ("connection failed");
++      rio_printf ("   -> %s:%s\n", s_addr, s_port);
++      lio_exit (EXIT_FAILURE);
++    }
++  rio_restore (t);
 +
 +  return sockfd;
 +}
@@ -4273,6 +6420,59 @@ index 0000000000..7a3190f3fb
 +    rio_get_epoll_wait (hdr, fd);
 +    break;
 +
++  case PCN_SYS_FALLOCATE:
++    rio_get_fallocate (hdr, fd);
++    break;
++
++  case PCN_SYS_RT_SIGACTION:
++    rio_get_sigaction (hdr, fd);
++    break;
++
++  case PCN_SYS_FCNTL:
++    rio_get_fcntl (hdr, fd);
++    break;
++
++  case PCN_SYS_GETCWD:
++    rio_get_getcwd (hdr, fd);
++    break;
++
++  case PCN_SYS_PIPE:
++    rio_get_pipe (hdr, fd);
++    break;
++
++  case PCN_SYS_SOCKET:
++    rio_get_socket (hdr, fd);
++    break;
++
++  case PCN_SYS_GETSOCKOPT:
++    rio_get_getsockopt (hdr, fd);
++    break;
++
++  case PCN_SYS_SETSOCKOPT:
++    rio_get_setsockopt (hdr, fd);
++    break;
++
++  case PCN_SYS_BIND:
++    rio_get_bind (hdr, fd);
++    break;
++
++  case PCN_SYS_LISTEN:
++    rio_get_listen (hdr, fd);
++    break;
++
++  case PCN_SYS_ACCEPT:
++    rio_get_accept (hdr, fd);
++    break;
++
++  case PCN_SYS_CONNECT:
++    rio_get_connect (hdr, fd);
++    break;
++
++  case PCN_SYS_POLL:
++  case PCN_SYS_PPOLL:
++    rio_get_poll (hdr, fd);
++    break;
++
 +  default:
 +    ;
 +  }
@@ -4311,7 +6511,7 @@ index 0000000000..7a3190f3fb
 +    break;
 +
 +  default:
-+    rio_printf ("unexpected message type: %d\n", hdr.msg_type);
++    lio_error ("unexpected message type: %u\n", hdr.msg_type);
 +    ;
 +  }
 +
@@ -4333,6 +6533,7 @@ index 0000000000..7a3190f3fb
 +   */
 +  struct pollfd pfds[3];
 +  int fd_count = 1;
++  int t;
 +
 +  pd->pcn_local_ip = pcn_get_ip ();
 +
@@ -4350,17 +6551,27 @@ index 0000000000..7a3190f3fb
 +    }
 +
 +  while (1) {
-+    int poll_count = poll (pfds, fd_count, -1);
++    int poll_count;
 +    struct sockaddr_storage remoteaddr;
 +    socklen_t addrlen;
 +    int i;
 +
++    t = rio_disable ();
++    poll_count = poll (pfds, fd_count, -1);
++    rio_restore (t);
++
 +    if (poll_count == -1 && pd->rio_child_pid == -100)
 +      pd->rio_child_pid = -1;
-+    else if (poll_count == -1 ) {
-+      perror ("poll");
-+      lio_exit (EXIT_FAILURE);
-+    }
++    else if (poll_count == -1)
++      {
++	/* A signal may have been forwarded, so retry.  */
++	if (errno == EINTR)
++	  continue;
++
++	rio_disable ();
++	perror ("poll");
++	lio_error ("%s: poll failure\n", __FUNCTION__);
++      }
 +
 +    if (0 && pd->rio_debug)
 +      rio_printf ("%s: connections = %d\n", __FUNCTION__, fd_count);
@@ -4386,17 +6597,21 @@ index 0000000000..7a3190f3fb
 +	addrlen = sizeof (remoteaddr);
 +
 +	pd->pcn_client_sockfd = lio_accept (listen_fd, (struct sockaddr *)&remoteaddr,
-+						&addrlen);
++					    &addrlen);
 +
 +	if (pd->pcn_client_sockfd < 0)
-+	  perror ("failed to accept client");
++	  {
++	    rio_disable ();
++	    perror ("failed to accept client");
++	    lio_exit (EXIT_FAILURE);
++	  }
 +	else {
 +	  char buf[INET_ADDRSTRLEN];
 +	  struct sockaddr_in *sin = (struct sockaddr_in *)&remoteaddr;
 +
 +	  if (1 || pd->rio_debug) {
 +	    inet_ntop (remoteaddr.ss_family, &sin->sin_addr, buf,
-+		       INET6_ADDRSTRLEN);
++		       INET_ADDRSTRLEN);
 +	    rio_printf ("%s: accepted client %s\n", __FUNCTION__, buf);
 +	  }
 +
@@ -4482,29 +6697,33 @@ index 0000000000..7a3190f3fb
 +
 +      if ((res = getaddrinfo (s_addr, s_port, &hints, &ai)) != 0) {
 +	rio_printf ("getaddrinfo: %s\n", gai_strerror (res));
-+	exit (EXIT_FAILURE);
++	lio_exit (EXIT_FAILURE);
 +      }
 +
 +      assert (ai != NULL && ai->ai_family == AF_INET);
 +
-+      sockfd = socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
++      sockfd = lio_socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
 +      if (sockfd < 0)
 +	{
++	  rio_disable ();
 +	  perror ("socket");
 +	  lio_exit (EXIT_FAILURE);
 +	}
 +
-+      if (bind (sockfd, ai->ai_addr, ai->ai_addrlen) == -1)
++      if (lio_bind (sockfd, ai->ai_addr, ai->ai_addrlen) == -1)
 +	{
++	  rio_disable ();
 +	  lio_close (sockfd);
 +	  perror ("bind");
 +	  lio_exit (EXIT_FAILURE);
 +	}
 +
-+      if (listen (sockfd, 2) == -1) {
-+	perror ("listen");
-+	lio_exit (EXIT_FAILURE);
-+      }
++      if (lio_listen (sockfd, 2) == -1)
++	{
++	  rio_disable ();
++	  perror ("listen");
++	  lio_exit (EXIT_FAILURE);
++	}
 +
 +      if (pd->pcn_server_ip == 0)
 +	{
@@ -4582,8 +6801,9 @@ index 0000000000..7a3190f3fb
 +      lio_exit (EXIT_FAILURE);
 +    }
 +
-+  if (bind (sockfd, ai->ai_addr, ai->ai_addrlen) == -1)
++  if (lio_bind (sockfd, ai->ai_addr, ai->ai_addrlen) == -1)
 +    {
++      rio_disable ();
 +      lio_close (sockfd);
 +      perror ("bind");
 +      lio_exit (EXIT_FAILURE);
@@ -4595,10 +6815,12 @@ index 0000000000..7a3190f3fb
 +      pd->pcn_server_port = port;
 +    }
 +
-+  if (listen (sockfd, 2) == -1) {
-+    perror ("listen");
-+    lio_exit (EXIT_FAILURE);
-+  }
++  if (lio_listen (sockfd, 2) == -1)
++    {
++      rio_disable ();
++      perror ("listen");
++      lio_exit (EXIT_FAILURE);
++    }
 +
 +  freeaddrinfo (ai);
 +
@@ -4612,19 +6834,250 @@ index 0000000000..7a3190f3fb
 +
 +  hdr.msg_type = PCN_TYPE_CONTROL;
 +  hdr.msg_kind = PCN_CTL_MIGRATE;
++  hdr.msg_id = rio_msg_id ();
++  hdr.msg_async = PCN_SEND_NORET;
++  hdr.msg_size = sizeof (hdr);
 +
-+  pcn_send_iov (pd->pcn_server_sockfd, &hdr, NULL, 0);
++  pcn_send (pd->pcn_server_sockfd, &hdr);
 +
 +  lio_close (pd->pcn_server_sockfd);
 +
 +  pd->pcn_server_sockfd = -1;
++
++  rio_dbg_printf ("%s: success!\n", __FUNCTION__);
++}
+diff --git a/remote_io/rio_sigaction.c b/remote_io/rio_sigaction.c
+new file mode 100644
+index 0000000000..8959c3c347
+--- /dev/null
++++ b/remote_io/rio_sigaction.c
+@@ -0,0 +1,105 @@
++#include <sysdep.h>
++#include <sys/syscall.h>
++#include <sys/epoll.h>
++#include <popcorn.h>
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
++
++static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
++
++static void
++rio_signal_forwarder (int sig, siginfo_t *si, void *arg)
++{
++  struct sockaddr addr;
++  struct sockaddr_in *client;
++  socklen_t addrlen = sizeof (addr);
++  uint32_t myip = pcn_get_ip ();
++  uint32_t lip = 0x100007f; /* 127.0.0.1  */
++  uint32_t cip;
++
++  getpeername (pd->pcn_client_sockfd, &addr, &addrlen);
++  client = (struct sockaddr_in *)&addr;
++
++  cip = *(long *)&(client->sin_addr);
++
++  dump_pcn_data ();
++
++  rio_dbg_printf ("%s: forwarding signal '%u' to pid '%u' with IP '%x' (myip = %x)\n",
++		  __FUNCTION__, sig, pd->rio_child_pid, cip, myip);
++
++  if (cip == myip || cip == lip)
++    lio_kill (pd->rio_child_pid, sig);
++  else
++    {
++      int sockfd;
++      struct pcn_msg_signal msg;
++
++      msg.pid = pd->rio_child_pid;
++      msg.sig = sig;
++      msg.type = PCN_SIG_KILL;
++
++      sockfd = lio_socket (PF_INET, SOCK_STREAM, 0);
++      if (sockfd < 0)
++	{
++	  rio_disable ();
++	  perror ("socket");
++	  exit (EXIT_FAILURE);
++	}
++	
++      client->sin_port = htons (POPCORN_KILLD_PORT);
++
++      if (connect (sockfd, &addr, addrlen) == -1)
++	{
++	  rio_disable ();
++	  perror ("connection failed");
++	  exit (EXIT_FAILURE);
++	}
++
++      lio_write (sockfd, &msg, sizeof (msg));
++
++      lio_close (sockfd);
++    }
++}
++
++static void
++register_signal (int sig)
++{
++  struct sigaction sa;
++
++  sigemptyset (&sa.sa_mask);
++  sa.sa_flags = 0;
++  sa.sa_sigaction = rio_signal_forwarder;
++  sa.sa_flags = SA_SIGINFO;
++
++  /* Don't call lio_rt_sigaction directly, because glibc
++     needs to set sa_restorer.  */
++  sigaction (sig, &sa, NULL);
++}
++
++int
++rio_get_sigaction (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_signal msg;
++  struct pcn_msg_res res;
++
++  lio_get_msg (fd, &msg, sizeof (msg));
++
++  register_signal (msg.sig);
++
++  dump_pcn_data ();
++
++  rio_printf ("%s[%u]: signal = %d, pid = %d\n",
++	      __FUNCTION__, hdr->msg_id, msg.sig, msg.pid);
++
++  res.id = hdr->msg_id;
++  res.rio_errno = 0;
++  res.res = 0;
++
++  pcn_res (fd, &res);
++
++  //lio_assert_empty_socket (fd);
++
++  return res.res;
++}
+diff --git a/remote_io/rio_socket.c b/remote_io/rio_socket.c
+new file mode 100644
+index 0000000000..3389cefb9b
+--- /dev/null
++++ b/remote_io/rio_socket.c
+@@ -0,0 +1,109 @@
++/* read system call forwarding  */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
++#include <remote_io.h>
++#include <message.h>
++#include <sys/socket.h>
++#include <syscall.h>
++#include <unistd.h>
++#include <errno.h>
++#include <popcorn.h>
++#include <sysdep-cancel.h>
++
++#include "remote_io.h"
++#include "local_io.h"
++#include "message.h"
++#include "server.h"
++
++int
++rio_get_socket (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_socket msg;
++  struct pcn_msg_res ack;
++  int res;
++
++  res = lio_get_msg (fd, &msg, sizeof (msg));
++  if (res < sizeof (msg))
++    lio_error ("%s[%u]: failed to receive socket message\n",
++	       __FUNCTION__, hdr->msg_id);
++
++  ack.res = lio_socket (msg.domain, msg.type, msg.protocol);
++  ack.rio_errno = errno;
++
++  if (ack.res >= 0)
++    rio_fd_open_special (ack.res, RIO_FD_SOCKET);
++
++  rio_dbg_printf ("%s[%u]: domain = %x, type = %x, protocol = %x -- res = %u\n",
++		  __FUNCTION__, hdr->msg_id, msg.domain, msg.type,
++		  msg.protocol, ack.res);
++
++  lio_send_msg (fd, &ack, sizeof (ack));
++
++  //lio_assert_empty_socket (fd);
++
++  return 0;
++}
++
++int
++rio_get_setsockopt (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_sockopt *msg;
++  struct pcn_msg_res ack;
++  int res;
++
++  msg = alloca (hdr->msg_size);
++
++  res = lio_get_msg (fd, msg, hdr->msg_size);
++  if (res < sizeof (msg))
++    lio_error ("%s[%u]: failed to receive sockopt message\n",
++	       __FUNCTION__, hdr->msg_id);
++
++  ack.res = lio_setsockopt (msg->sockfd, msg->level, msg->optname,
++			    msg->optval, msg->optlen);
++  ack.rio_errno = errno;
++
++  rio_dbg_printf ("%s[%u]: sockfd = %u, level = %u, optname = %u, optval = %x, len = %u -- res = %u\n",
++		  __FUNCTION__, hdr->msg_id, msg->sockfd, msg->level,
++		  msg->optname, ((int *)(msg->optval))[0], msg->optlen,
++		  ack.res);
++
++  lio_send_msg (fd, &ack, sizeof (ack));
++
++  //lio_assert_empty_socket (fd);
++
++  return 0;
++}
++
++int
++rio_get_getsockopt (struct pcn_msg_hdr *hdr, int fd)
++{
++  struct pcn_msg_sockopt *msg;
++  int res;
++
++  msg = alloca (hdr->msg_size);
++
++  res = lio_get_msg (fd, msg, hdr->msg_size);
++  if (res < sizeof (msg))
++    lio_error ("%s[%u]: failed to receive sockopt message\n",
++	       __FUNCTION__, hdr->msg_id);
++
++  res = lio_getsockopt (msg->sockfd, msg->level, msg->optname,
++			msg->optval, &msg->optlen);
++
++  msg->sockfd = res;
++  msg->level = errno;
++
++  rio_dbg_printf ("%s[%u]: sockfd = %u, level = %u, optname = %u, optval = %x, len = %u -- res = %u\n",
++		  __FUNCTION__, hdr->msg_id, msg->sockfd, msg->level,
++		  msg->optname, ((int *)(msg->optval))[0], msg->optlen,
++		  res);
++
++  lio_send_msg (fd, msg, hdr->msg_size);
++
++  //lio_assert_empty_socket (fd);
++
++  return 0;
 +}
 diff --git a/remote_io/rio_vma.c b/remote_io/rio_vma.c
 new file mode 100644
-index 0000000000..5f8abebcdc
+index 0000000000..101b0839ac
 --- /dev/null
 +++ b/remote_io/rio_vma.c
-@@ -0,0 +1,350 @@
+@@ -0,0 +1,432 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <string.h>
@@ -4680,6 +7133,7 @@ index 0000000000..5f8abebcdc
 +  fdp->status = 0;
 +  fdp->name = strdup (name);
 +  fdp->lname = NULL;
++  fdp->type = RIO_FD_FILE;
 +
 +  t = tsearch (fdp, &rio_fd_root, fdinfo_cmp_fn);
 +  if (t == NULL)
@@ -4688,8 +7142,36 @@ index 0000000000..5f8abebcdc
 +      exit (EXIT_FAILURE);
 +    }
 +
-+  rio_dbg_printf ("%s: fd = %u, flags = %u, mode = %u, name = %s\n",
-+		  __FUNCTION__, (*t)->fd, (*t)->flags, (*t)->mode, (*t)->name);
++  //  rio_dbg_printf ("%s: fd = %u, flags = %u, mode = %u, name = %s\n",
++  //		  __FUNCTION__, (*t)->fd, (*t)->flags, (*t)->mode, (*t)->name);
++
++  return fdp;
++}
++
++struct fdinfo *
++rio_fd_open_special (int fd, int type)
++{
++  struct fdinfo *fdp = (struct fdinfo *) malloc (sizeof (struct fdinfo));
++  struct fdinfo **t;
++
++  fdp->fd = fd;
++  fdp->maps = 0;
++  fdp->flags = 0;
++  fdp->mode = 0;
++  fdp->status = 0;
++  fdp->name = NULL;
++  fdp->lname = NULL;
++  fdp->type = type;
++
++  t = tsearch (fdp, &rio_fd_root, fdinfo_cmp_fn);
++  if (t == NULL)
++    {
++      rio_dbg_printf ("%s: failed to access rio_fd_root\n", __FUNCTION__);
++      exit (EXIT_FAILURE);
++    }
++
++  //  rio_dbg_printf ("%s: fd = %u, flags = %u, mode = %u, name = %s\n",
++  //		  __FUNCTION__, (*t)->fd, (*t)->flags, (*t)->mode, (*t)->name);
 +
 +  return fdp;
 +}
@@ -4724,8 +7206,6 @@ index 0000000000..5f8abebcdc
 +{
 +  struct fdinfo *t;
 +
-+  pfd->fd = -rand ();
-+
 +  t = tsearch (pfd, &rio_fd_closed, fdinfo_cmp_fn);
 +  if (t == NULL)
 +    {
@@ -4740,16 +7220,16 @@ index 0000000000..5f8abebcdc
 +  if (pfd == NULL)
 +    lio_error ("%s: pfd is NULL\n", __FUNCTION__);
 +
-+  tdelete (pfd->fd, &rio_fd_closed, fdinfo_cmp_fn);
++  tdelete (pfd, &rio_fd_closed, fdinfo_cmp_fn);
 +}
 +
 +struct mmapinfo *
-+rio_mmap_add (int fd, void *addr, int len, int prot, int flags)
++rio_mmap_add (struct fdinfo *pfd, void *addr, int len, int prot, int flags)
 +{
 +  struct mmapinfo *mp = malloc (sizeof (struct mmapinfo));
 +  struct mmapinfo **t;
 +
-+  mp->fd = fd;
++  mp->pfd = pfd;
 +  mp->addr = addr;
 +  mp->len = len;
 +  mp->prot = prot;
@@ -4862,6 +7342,7 @@ index 0000000000..5f8abebcdc
 +{
 +  struct pcn_msg_io_open iop = {0};
 +  struct pcn_msg_io_data iod = {0};
++  struct pcn_msg_hdr ack;
 +  struct iovec payload[2];
 +  struct stat st;
 +  int res, sent;
@@ -4887,8 +7368,6 @@ index 0000000000..5f8abebcdc
 +  payload[1].iov_base = pfd->lname;
 +  payload[1].iov_len = lio_strlen (pfd->lname) + 1;
 +
-+  res = lio_writev (fd, payload, 2);
-+
 +/*
 +  rio_dbg_printf ("%s: iop.hdr.msg_kind = %u\n", __FUNCTION__, iop.hdr.msg_kind);
 +  rio_dbg_printf ("%s: iop.hdr.msg_type = %u\n", __FUNCTION__, iop.hdr.msg_type);
@@ -4900,7 +7379,9 @@ index 0000000000..5f8abebcdc
 +		  __FUNCTION__, mid, iop.open.dirfd, iop.open.flags, iop.open.mode,
 +		  pfd->lname, st.st_size);
 +
-+  // todo: check for ack from client
++  res = lio_writev (fd, payload, 2);
++
++  lio_get_msg (fd, &ack, sizeof (ack));
 +
 +  /* Send the file over the wire.  */
 +  lio_fstat (pfd->fd, &st);
@@ -4929,6 +7410,14 @@ index 0000000000..5f8abebcdc
 +  rio_dbg_printf ("%s[%u]: sent file '%s', size = '%u' bytes\n",
 +		  __FUNCTION__, mid, pfd->lname, sent);
 +
++  ack.msg_id = mid;
++  ack.msg_type = PCN_TYPE_CONTROL;
++  ack.msg_kind = PCN_CTL_ACK;
++  ack.msg_async = PCN_SEND_NORET;
++  ack.msg_size = sizeof (ack);
++
++  pcn_send (fd, &ack);
++
 +  return pfd->fd;
 +}
 +
@@ -4948,12 +7437,12 @@ index 0000000000..5f8abebcdc
 +rio_file_sync_remote (int sockfd, int mid, struct fdinfo *pfd)
 +{
 +  struct pcn_msg_hdr hdr;
++  struct pcn_msg_hdr fin;
 +  struct iovec args;
++  struct stat st;
++  void *addr;
++  int fd, recv, res;
 +
-+  rio_dbg_printf ("%s[%u]: syncing remote file '%s'\n", __FUNCTION__,
-+		  mid, pfd->name);
-+
-+/*
 +  hdr.msg_kind = PCN_TYPE_CONTROL;
 +  hdr.msg_type = PCN_CTL_SYNC;
 +  hdr.msg_id = mid;
@@ -4964,7 +7453,53 @@ index 0000000000..5f8abebcdc
 +  args.iov_len = hdr.msg_size;
 +
 +  pcn_send_iov (sockfd, &hdr, &args, 1);
-+*/
++
++  /* Open the local file, if necessary.  */
++  if (pfd->fd > 0)
++    fd = pfd->fd;
++  else
++    {
++      fd = lio_open (pfd->name, O_CREAT | O_RDWR, pfd->mode);
++      if (fd < 0)
++	lio_error ("%s: failed to open file '%s'\n", __FUNCTION__, pfd->name);
++    }
++
++  lio_fstat (fd, &st);
++  rio_dbg_printf ("%s[%u]: syncing remote file '%s', size = %u bytes\n",
++		  __FUNCTION__, mid, pfd->name, st.st_size);
++
++  addr = lio_mmap (NULL, st.st_size, PROT_WRITE, MAP_SHARED, fd, 0);
++  if (addr == (void *)-1)
++    lio_error ("%s: failed to mmap '%s'\n", __FUNCTION__, pfd->name);
++
++  recv = 0;
++  while (recv < st.st_size)
++    {
++      res = lio_read (sockfd, addr + recv, st.st_size - recv);
++
++      if (res < 0)
++	lio_error ("%s[%u]: failed to receive file, res = %u\n",
++		   __FUNCTION__, mid, res);
++
++      recv += res;
++      rio_dbg_printf ("%s[%u]: received %u bytes (%u)\n",
++		      __FUNCTION__, mid, recv, res);
++    }
++
++  lio_munmap (addr, st.st_size);
++
++  if (pfd->fd < 0)
++    lio_close (fd);
++
++  fin.msg_id = mid;
++  fin.msg_type = PCN_TYPE_CONTROL;
++  fin.msg_kind = PCN_CTL_ACK;
++  fin.msg_async = PCN_SEND_NORET;
++  fin.msg_size = sizeof (fin);
++
++  //pcn_send (sockfd, &fin);
++
++  return st.st_size;
 +}
 +
 +/* Synchronize a copy of file represented by PFD.  Eventually,
@@ -4977,10 +7512,10 @@ index 0000000000..5f8abebcdc
 +}
 diff --git a/remote_io/rio_write.c b/remote_io/rio_write.c
 new file mode 100644
-index 0000000000..acca953969
+index 0000000000..be4428e6ff
 --- /dev/null
 +++ b/remote_io/rio_write.c
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,184 @@
 +/* writev system call forwarding.
 + *
 + * Eventually, this needs to be agnostic to the C library...
@@ -5021,10 +7556,7 @@ index 0000000000..acca953969
 +
 +  //rio_printf ("%s\n", __FUNCTION__);
 +
-+  res.res = get_msg (fd, msg, hdr->msg_size);
-+
-+  rio_printf ("%s[%u]: fd = %u, count = %u, received %d bytes\n",
-+	      __FUNCTION__, hdr->msg_id, msg->fd, msg->size, res);
++  res.res = lio_get_msg (fd, msg, hdr->msg_size);
 +
 +  if (pd->pcn_local_ip != pd->pcn_server_ip) {
 +    struct iovec iov[1];
@@ -5044,6 +7576,10 @@ index 0000000000..acca953969
 +
 +  res.rio_errno = errno;
 +  res.id = hdr->msg_id;
++
++
++  rio_printf ("%s[%u]: fd = %u, count = %u, received %d bytes -- res = %d, erno = %d\n",
++	      __FUNCTION__, hdr->msg_id, msg->fd, msg->size, res, res.res, res.rio_errno);
 +
 +  pcn_res (fd, &res);
 +
@@ -5071,7 +7607,7 @@ index 0000000000..acca953969
 +//    return syscall (SYS_write, fd, buf, count);
 +
 +  /* Check if the server is down.  */
-+  if (pd->pcn_server_sockfd < 0)
++  if (!pd->pcn_remote_io_active)
 +    return lio_write (fd, buf, count);
 +
 +  msg.fd = fd;
@@ -5087,9 +7623,12 @@ index 0000000000..acca953969
 +  hdr.msg_kind = PCN_SYS_WRITE;
 +  hdr.msg_id = mid;
 +  hdr.msg_async = 0;
++  hdr.msg_size = sizeof (msg) + count;
 +
-+  rio_dbg_printf ("%s[%u]: fd = %u, count = %u\n", __FUNCTION__, mid, fd, count);
 +  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, 2);
++
++  rio_dbg_printf ("%s[%u]: fd = %u, count = %u -- res = %u\n",
++		  __FUNCTION__, mid, fd, count, res);
 +
 +//  printf ("size: hdr = %zu, msg = %zu (%d), payload = %d\n",
 +//	  sizeof (hdr), sizeof (msg), msg.size, size);
@@ -5114,9 +7653,10 @@ index 0000000000..acca953969
 +  struct pcn_write_msg msg;
 +  int res;
 +  int mid = rio_msg_id ();
++  int payload_sz = sizeof (msg);
 +
 +  /* Check if the server is down.  */
-+  if (pd->pcn_server_sockfd < 0)
++  if (!pd->pcn_remote_io_active)
 +    return lio_writev (fd, iov, iovcnt);
 +
 +  for (i = 0; i < iovcnt; i++)
@@ -5138,12 +7678,14 @@ index 0000000000..acca953969
 +  for (i = 1; i < iovcnt+1; i++) {
 +    payload[i].iov_base = iov[i-1].iov_base;
 +    payload[i].iov_len = iov[i-1].iov_len;
++    payload_sz += iov[i-1].iov_len;
 +  }
 +
 +  hdr.msg_type = PCN_TYPE_SYSCALL;
 +  hdr.msg_kind = PCN_SYS_WRITE;
 +  hdr.msg_id = mid;
 +  hdr.msg_async = 0;
++  hdr.msg_size = payload_sz;
 +
 +  res = pcn_send_iov (pd->pcn_server_sockfd, &hdr, payload, iovcnt+1);
 +
@@ -5160,10 +7702,10 @@ index 0000000000..acca953969
 +}
 diff --git a/remote_io/server.h b/remote_io/server.h
 new file mode 100644
-index 0000000000..0fd55298f1
+index 0000000000..a11fd3db9a
 --- /dev/null
 +++ b/remote_io/server.h
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,111 @@
 +#ifndef SERVER_H
 +#define SERVER_H
 +
@@ -5171,14 +7713,22 @@ index 0000000000..0fd55298f1
 +
 +struct pcn_msg_hdr;
 +
++/* TCP Port (KILLD) for popcorn_killd.  */
++#define POPCORN_KILLD_PORT 54553
++
 +// See /proc/self/limits for the actual limit
 +#define RIO_MAX_OPENED_FILES 1024
 +
-+#define RIO_FD_MAPPED  (1 << 0)
++#define RIO_FD_OPENED  (1 << 0)
 +#define RIO_FD_DIRTY (1 << 1)
 +
 +/* Name of the directory for stashing local copy of mmap'ed filed.  */
 +#define PCN_TMP_DIR ".pcn"
++
++#define RIO_FD_FILE 1
++#define RIO_FD_SOCKET 2
++#define RIO_FD_EPOLL 3
++#define RIO_FD_ACCEPT 3
 +
 +/* Might need also need to keep track of the parent process so that
 +   if the application client forks, the rio_server can jump to its parent
@@ -5186,17 +7736,17 @@ index 0000000000..0fd55298f1
 +   a file has been closed, but may still be mapped.  */
 +struct fdinfo {
 +  int fd;
-+  int open;
 +  mode_t mode;
 +  int maps;
 +  int flags;
 +  unsigned int status;
++  unsigned int type;
 +  char *name; /* Name of the original file.  */
 +  char *lname; /* Name of the cached file.  */
 +};
 +
 +struct mmapinfo {
-+  int fd;
++  struct fdinfo *pfd;
 +  void *addr;
 +  long len;
 +  int prot;
@@ -5210,6 +7760,7 @@ index 0000000000..0fd55298f1
 +
 +// Need to add cleanup functions (rio_fd_destroy/rio_mmap_destroy)
 +extern struct fdinfo *rio_fd_open (int fd, int flags, mode_t mode, char *name);
++extern struct fdinfo *rio_fd_open_special (int fd, int type);
 +extern struct fdinfo *rio_fd_find (int fd);
 +extern void rio_fd_rm (struct fdinfo *fd);
 +
@@ -5217,7 +7768,7 @@ index 0000000000..0fd55298f1
 +extern void rio_fd_add_closed (struct fdinfo *fd);
 +extern void rio_fd_rm_closed (struct fdinfo *pfd);
 +
-+extern struct mmapinfo *rio_mmap_add (int fd, void *addr, int len, int prot, int flags);
++extern struct mmapinfo *rio_mmap_add (struct fdinfo *pfd, void *addr, int len, int prot, int flags);
 +extern struct mmapinfo *rio_mmap_find (void *addr);
 +extern void rio_mmap_rm (struct mmapinfo *map);
 +
@@ -5233,21 +7784,37 @@ index 0000000000..0fd55298f1
 +extern int rio_get_open (struct pcn_msg_hdr *hdr, int fd);
 +extern int rio_get_close (struct pcn_msg_hdr *hdr, int fd);
 +extern int rio_get_fxstatat (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_fallocate (struct pcn_msg_hdr *hdr, int fd);
 +extern int rio_get_mmap (struct pcn_msg_hdr *hdr, int fd);
 +extern int rio_get_munmap (struct pcn_msg_hdr *hdr, int fd);
 +extern int rio_get_epoll_create (struct pcn_msg_hdr *hdr, int fd);
 +extern int rio_get_epoll_ctl (struct pcn_msg_hdr *hdr, int fd);
 +extern int rio_get_epoll_wait (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_poll (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_sigaction (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_fcntl (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_getcwd (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_socket (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_bind (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_getsockopt (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_setsockopt (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_listen (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_pipe (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_accept (struct pcn_msg_hdr *hdr, int fd);
++extern int rio_get_connect (struct pcn_msg_hdr *hdr, int fd);
 +
 +extern int rio_get_file (struct pcn_msg_open *msg, int fd);
++extern int rio_send_file (struct pcn_msg_hdr *hdr);
 +extern void rio_init_tmpdir (void);
 +extern void rio_maybe_zap_file (const char *fname);
 +
 +extern int rio_msg_id (void);
-+extern int get_msg (int sock, void *buf, int size);
 +
 +extern int __do_fxstatat(int vers, int fd, const char *file, struct stat *st,
 +			 int flag);
++
++extern int rio_disable (void);
++extern void rio_restore (int);
 +
 +#endif
 diff --git a/remote_io/test-1.c b/remote_io/test-1.c
@@ -5340,6 +7907,54 @@ index 0000000000..b1e67c0314
 +
 +  while (i != 0)
 +    ;
++
++  return 0;
++}
+diff --git a/remote_io/test-fcntl.c b/remote_io/test-fcntl.c
+new file mode 100644
+index 0000000000..c6bfb98c78
+--- /dev/null
++++ b/remote_io/test-fcntl.c
+@@ -0,0 +1,17 @@
++// x86_64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/x86_64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/x86_64/lib/ test-fcntl.c -o tf.exe -g
++
++// aarch64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/aarch64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/aarch64/lib/ test-fcntl.c -o tf.a64.exe -g
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <fcntl.h>
++
++int
++main ()
++{
++  printf ("stdin: %x\n", fcntl (0, F_GETFL, 0));
++  printf ("stdout: %x\n", fcntl (1, F_GETFL, 0));
++  printf ("stderr: %x\n", fcntl (2, F_GETFL, 0));
++
++  return 0;
++}
+diff --git a/remote_io/test-getcwd.c b/remote_io/test-getcwd.c
+new file mode 100644
+index 0000000000..aca67d63ce
+--- /dev/null
++++ b/remote_io/test-getcwd.c
+@@ -0,0 +1,19 @@
++// x86_64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/x86_64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/x86_64/lib/ test-getcwd.c -o tg.exe -g
++
++// aarch64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/aarch64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/aarch64/lib/ test-getcwd.c -o tg.a64.exe -g
++
++#include <stdio.h>
++#include <unistd.h>
++#include <linux/limits.h>
++
++int
++main ()
++{
++  char pwd[PATH_MAX];
++
++  getcwd (pwd, PATH_MAX);
++  
++  printf ("pwd = %s\n", pwd);
 +
 +  return 0;
 +}
@@ -5494,6 +8109,240 @@ index 0000000000..b03b3714de
 +  
 +  return res;
 +}
+diff --git a/remote_io/test-mmap.c b/remote_io/test-mmap.c
+new file mode 100644
+index 0000000000..33768de799
+--- /dev/null
++++ b/remote_io/test-mmap.c
+@@ -0,0 +1,30 @@
++// x86_64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/x86_64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/x86_64/lib/ mmap-test.c -g -o mmap.x86.exe
++
++// aarch64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/aarch64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/aarch64/lib/ mmap-test.c -g -o mmap.a64.exe
++
++#define _GNU_SOURCE
++
++#include <string.h>
++#include <unistd.h>
++#include <sys/mman.h>
++#include <fcntl.h>
++
++int
++main ()
++{
++  const char msg[] = "abcdefghijklmnopqrstuvwxyz\n";
++  int fd = open ("test.123", O_CREAT|O_TRUNC|O_RDWR, 0644);
++  char *addr;
++
++  fallocate (fd, FALLOC_FL_ZERO_RANGE, 0, strlen (msg));
++  
++  addr = mmap (NULL, strlen (msg), PROT_WRITE, MAP_SHARED, fd, 0);
++
++  strcpy (addr, msg);
++
++  //close (fd);
++  munmap (addr, strlen (msg));
++  close (fd);
++
++ return 0;
++}
+diff --git a/remote_io/test-pipe.c b/remote_io/test-pipe.c
+new file mode 100644
+index 0000000000..44807407a9
+--- /dev/null
++++ b/remote_io/test-pipe.c
+@@ -0,0 +1,26 @@
++// x86_64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/x86_64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/x86_64/lib/ test-pipe.c -o tp.exe -g
++
++// aarch64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/aarch64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/aarch64/lib/ test-pipe.c -o tp.a64.exe -g
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <fcntl.h>
++#include <unistd.h>
++
++int
++main ()
++{
++  int pfds[2], res;
++  char out[7], *in = "hello\n"; // length 7
++
++  res = pipe (pfds);
++  if (res < 0)
++    exit (EXIT_FAILURE);
++
++  write (pfds[1], in, 7);
++  read (pfds[0], out, 7);
++
++  write (STDOUT_FILENO, out, 7);
++  
++  return 0;
++}
+diff --git a/remote_io/test-sigint-2.c b/remote_io/test-sigint-2.c
+new file mode 100644
+index 0000000000..7b00b15aff
+--- /dev/null
++++ b/remote_io/test-sigint-2.c
+@@ -0,0 +1,42 @@
++// x86_64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/x86_64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/x86_64/lib/ test-sigint-2.c -o ts-2.exe -g
++
++// aarch64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/aarch64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/aarch64/lib/ test-sigint-2.c -o ts-2.a64.exe -g
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <signal.h>
++#include <unistd.h>
++#include <remote_io.h>
++
++void
++sigint_handler (int signo, siginfo_t *si, void *arg)
++{
++  printf ("received signal 'SIGINT' from process %d\n", si->si_pid);
++  exit (EXIT_SUCCESS);
++}
++
++int
++main ()
++{
++  struct sigaction sa;
++  int d;
++
++  sigemptyset (&sa.sa_mask);
++  sa.sa_flags = 0;
++  sa.sa_sigaction = sigint_handler;
++  sa.sa_flags = SA_SIGINFO;
++  sigaction (SIGINT, &sa, NULL);
++
++  pcn_unload_signals ();
++  printf ("unloaded signals\n");
++  
++  printf ("[%d] sigint test\n", getpid ());
++  scanf ("%d", &d);
++
++  pcn_restore_signals ();
++  printf ("restored signals\n");
++
++  scanf ("%d", &d);  
++  
++  return 0;
++}
+diff --git a/remote_io/test-sigint.c b/remote_io/test-sigint.c
+new file mode 100644
+index 0000000000..005447e4e6
+--- /dev/null
++++ b/remote_io/test-sigint.c
+@@ -0,0 +1,33 @@
++// x86_64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/x86_64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/x86_64/lib/ test-sigint.c -o ts.exe -g
++
++// aarch64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/aarch64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/aarch64/lib/ test-sigint.c -o ts.a64.exe -g
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <signal.h>
++#include <unistd.h>
++
++void
++sigint_handler (int signo, siginfo_t *si, void *arg)
++{
++  printf ("received signal 'SIGINT' from process %d\n", si->si_pid);
++  exit (EXIT_SUCCESS);
++}
++
++int
++main ()
++{
++  struct sigaction sa;
++  int d;
++
++  sigemptyset (&sa.sa_mask);
++  sa.sa_flags = 0;
++  sa.sa_sigaction = sigint_handler;
++  sa.sa_flags = SA_SIGINFO;
++  sigaction (SIGINT, &sa, NULL);
++
++  printf ("[%d] sigint test\n", getpid ());
++  scanf ("%d", &d);
++
++  return 0;
++}
+diff --git a/remote_io/test-socket-server.c b/remote_io/test-socket-server.c
+new file mode 100644
+index 0000000000..c47ead493d
+--- /dev/null
++++ b/remote_io/test-socket-server.c
+@@ -0,0 +1,73 @@
++// x86_64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/x86_64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/x86_64/lib/ test-socket-server.c -g -o tss.exe
++
++// aarch64-popcorn-linux-gnu-gcc -Wl,-dynamic-linker,/scratch/pjr/inst/aarch64/lib/ld-2.31.so -Wl,-rpath,/scratch/pjr/inst/aarch64/lib/ test-socket-server.c -g -o tss.a64.exe
++
++#include <stdio.h>
++#include <stdlib.h>
++
++#include <netdb.h>
++#include <netinet/in.h>
++#include <unistd.h>
++
++#include <string.h>
++
++#define PORT 3124
++
++int
++main (int argc, char *argv[])
++{
++  int sockfd, newsockfd, len;
++  char buffer[256];
++  struct sockaddr_in saddr, caddr;
++  int  n;
++
++  sockfd = socket (AF_INET, SOCK_STREAM, 0);
++
++  if (sockfd < 0)
++    {
++      perror("ERROR opening socket");
++      exit(1);
++    }
++
++  bzero ((char *) &saddr, sizeof (saddr));
++
++  saddr.sin_family = AF_INET;
++  saddr.sin_addr.s_addr = INADDR_ANY;
++  saddr.sin_port = htons(PORT);
++
++  if (bind(sockfd, (struct sockaddr *) &saddr, sizeof (saddr)) < 0)
++    {
++      perror("ERROR on binding");
++      exit(1);
++    }
++
++  listen (sockfd, 5);
++  len = sizeof (caddr);
++
++  newsockfd = accept (sockfd, (struct sockaddr *)&caddr, &len);
++
++  if (newsockfd < 0)
++    {
++      perror("ERROR on accept");
++      exit(1);
++    }
++
++  bzero (buffer,256);
++  n = read (newsockfd, buffer, 255);
++
++  if (n < 0)
++    {
++      perror("ERROR reading from socket");
++      exit(1);
++    }
++
++  printf ("received> %s\n", buffer);
++
++  if (n < 0)
++    {
++      perror("ERROR writing to socket");
++      exit(1);
++    }
++
++  return 0;
++}
 diff --git a/sysdeps/aarch64/dl-machine.h b/sysdeps/aarch64/dl-machine.h
 index 8ffa0d1c51..bde4f28107 100644
 --- a/sysdeps/aarch64/dl-machine.h
@@ -5639,6 +8488,75 @@ index 0e3c7f76df..37c649aa27 100644
 -#define USE_IFUNC_GETTIMEOFDAY
 +/* #define USE_IFUNC_GETTIMEOFDAY */
  #include <sysdeps/unix/sysv/linux/gettimeofday.c>
+diff --git a/sysdeps/unix/sysv/linux/aarch64/kernel-features.h b/sysdeps/unix/sysv/linux/aarch64/kernel-features.h
+index 5f301bed6c..61c8930d06 100644
+--- a/sysdeps/unix/sysv/linux/aarch64/kernel-features.h
++++ b/sysdeps/unix/sysv/linux/aarch64/kernel-features.h
+@@ -21,3 +21,13 @@
+ 
+ #undef __ASSUME_CLONE_DEFAULT
+ #define __ASSUME_CLONE_BACKWARDS 1
++
++# define __ASSUME_SOCKET_SYSCALL             1
++# define __ASSUME_SOCKETPAIR_SYSCALL         1
++# define __ASSUME_BIND_SYSCALL               1
++# define __ASSUME_LISTEN_SYSCALL             1
++# define __ASSUME_GETSOCKOPT_SYSCALL         1
++# define __ASSUME_SETSOCKOPT_SYSCALL         1
++# define __ASSUME_GETSOCKNAME_SYSCALL        1
++# define __ASSUME_GETPEERNAME_SYSCALL        1
++# define __ASSUME_SHUTDOWN_SYSCALL           1
+diff --git a/sysdeps/unix/sysv/linux/accept.c b/sysdeps/unix/sysv/linux/accept.c
+index f6021a75e7..aef98eadcf 100644
+--- a/sysdeps/unix/sysv/linux/accept.c
++++ b/sysdeps/unix/sysv/linux/accept.c
+@@ -18,10 +18,14 @@
+ #include <sys/socket.h>
+ #include <sysdep-cancel.h>
+ #include <socketcall.h>
++#include <remote_io/remote_io.h>
+ 
+ int
+ __libc_accept (int fd, __SOCKADDR_ARG addr, socklen_t *len)
+ {
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_accept (fd, addr.__sockaddr__, len);
++#else
+ #ifdef __ASSUME_ACCEPT_SYSCALL
+   return SYSCALL_CANCEL (accept, fd, addr.__sockaddr__, len);
+ #elif defined __ASSUME_ACCEPT4_SYSCALL
+@@ -29,6 +33,7 @@ __libc_accept (int fd, __SOCKADDR_ARG addr, socklen_t *len)
+ #else
+   return SOCKETCALL_CANCEL (accept, fd, addr.__sockaddr__, len);
+ #endif
++#endif
+ }
+ weak_alias (__libc_accept, accept)
+ libc_hidden_def (accept)
+diff --git a/sysdeps/unix/sysv/linux/bind.c b/sysdeps/unix/sysv/linux/bind.c
+index da2ed19a33..f5e37d900a 100644
+--- a/sysdeps/unix/sysv/linux/bind.c
++++ b/sysdeps/unix/sysv/linux/bind.c
+@@ -22,14 +22,19 @@
+ #include <socketcall.h>
+ #include <kernel-features.h>
+ #include <sys/syscall.h>
++#include <remote_io/remote_io.h>
+ 
+ int
+ __bind (int fd, __CONST_SOCKADDR_ARG addr, socklen_t len)
+ {
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_bind (fd, addr.__sockaddr__, len);
++#else
+ #ifdef __ASSUME_BIND_SYSCALL
+   return INLINE_SYSCALL (bind, 3, fd, addr.__sockaddr__, len);
+ #else
+   return SOCKETCALL (bind, fd, addr.__sockaddr__, len, 0, 0, 0);
+ #endif
++#endif
+ }
+ weak_alias (__bind, bind)
 diff --git a/sysdeps/unix/sysv/linux/close.c b/sysdeps/unix/sysv/linux/close.c
 index 602ab558e6..ca7448a050 100644
 --- a/sysdeps/unix/sysv/linux/close.c
@@ -5681,6 +8599,31 @@ index 23ebcd0df5..249fc243b7 100644
 +#endif
  }
  libc_hidden_def (__close_nocancel)
+diff --git a/sysdeps/unix/sysv/linux/connect.c b/sysdeps/unix/sysv/linux/connect.c
+index 0e970b41ed..ffc4eaaa3f 100644
+--- a/sysdeps/unix/sysv/linux/connect.c
++++ b/sysdeps/unix/sysv/linux/connect.c
+@@ -18,15 +18,20 @@
+ #include <sys/socket.h>
+ #include <sysdep-cancel.h>
+ #include <socketcall.h>
++#include <remote_io/remote_io.h>
+ 
+ int
+ __libc_connect (int fd, __CONST_SOCKADDR_ARG addr, socklen_t len)
+ {
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_connect (fd, addr.__sockaddr__, len);
++#else
+ #ifdef __ASSUME_CONNECT_SYSCALL
+   return SYSCALL_CANCEL (connect, fd, addr.__sockaddr__, len);
+ #else
+   return SOCKETCALL_CANCEL (connect, fd, addr.__sockaddr__, len);
+ #endif
++#endif
+ }
+ weak_alias (__libc_connect, connect)
+ weak_alias (__libc_connect, __connect)
 diff --git a/sysdeps/unix/sysv/linux/dl-sysdep.h b/sysdeps/unix/sysv/linux/dl-sysdep.h
 index 8ed45503e7..de8182719e 100644
 --- a/sysdeps/unix/sysv/linux/dl-sysdep.h
@@ -5726,10 +8669,10 @@ index e3eac4a7ac..cdc84aa943 100644
  libc_hidden_def (epoll_create)
 diff --git a/sysdeps/unix/sysv/linux/epoll_ctl.c b/sysdeps/unix/sysv/linux/epoll_ctl.c
 new file mode 100644
-index 0000000000..2c78b20673
+index 0000000000..6fd39d6bc9
 --- /dev/null
 +++ b/sysdeps/unix/sysv/linux/epoll_ctl.c
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,44 @@
 +/* Linux epoll_ctl implementation.
 +   Copyright (C) 2017-2020 Free Software Foundation, Inc.
 +   This file is part of the GNU C Library.
@@ -5755,7 +8698,8 @@ index 0000000000..2c78b20673
 +#include <sys/syscall.h>
 +#include <remote_io/remote_io.h>
 +
-+#define PCN_EPOLL_DEFAULT 0
++/* Match PCN_EPOLL_NEW on x86-64.  */
++#define PCN_EPOLL_DEFAULT 1
 +
 +int
 +__do_epoll_ctl (int ver, int epfd, int op, int fd, struct epoll_event *event)
@@ -5775,16 +8719,17 @@ index 0000000000..2c78b20673
 +libc_hidden_def (epoll_ctl)
 \ No newline at end of file
 diff --git a/sysdeps/unix/sysv/linux/epoll_wait.c b/sysdeps/unix/sysv/linux/epoll_wait.c
-index 4e343b9344..a91902fa8e 100644
+index 4e343b9344..5665989cc9 100644
 --- a/sysdeps/unix/sysv/linux/epoll_wait.c
 +++ b/sysdeps/unix/sysv/linux/epoll_wait.c
-@@ -22,13 +22,29 @@
+@@ -22,13 +22,30 @@
  #include <sys/epoll.h>
  
  #include <sysdep-cancel.h>
 +#include <remote_io.h>
 +
-+#define PCN_EPOLL_DEFAULT 0
++/* Match PCN_EPOLL_NEW on x86-64.  */
++#define PCN_EPOLL_DEFAULT 1
  
  int
 -epoll_wait (int epfd, struct epoll_event *events, int maxevents, int timeout)
@@ -5810,6 +8755,76 @@ index 4e343b9344..a91902fa8e 100644
 +#endif
 +}
 +libc_hidden_def (epoll_wait)
+diff --git a/sysdeps/unix/sysv/linux/fallocate.c b/sysdeps/unix/sysv/linux/fallocate.c
+index e40d0c4a23..e33de2c7ea 100644
+--- a/sysdeps/unix/sysv/linux/fallocate.c
++++ b/sysdeps/unix/sysv/linux/fallocate.c
+@@ -18,13 +18,18 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <sysdep-cancel.h>
++#include <remote_io/remote_io.h>
+ 
+ #ifndef __OFF_T_MATCHES_OFF64_T
+ /* Reserve storage for the data of the file associated with FD.  */
+ int
+ fallocate (int fd, int mode, __off_t offset, __off_t len)
+ {
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_fallocate (fd, mode, offset, len);
++#else
+   return SYSCALL_CANCEL (fallocate, fd, mode,
+ 			 SYSCALL_LL (offset), SYSCALL_LL (len));
++#endif
+ }
+ #endif
+diff --git a/sysdeps/unix/sysv/linux/fallocate64.c b/sysdeps/unix/sysv/linux/fallocate64.c
+index b2d2fab797..601a4310e3 100644
+--- a/sysdeps/unix/sysv/linux/fallocate64.c
++++ b/sysdeps/unix/sysv/linux/fallocate64.c
+@@ -18,14 +18,19 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <sysdep-cancel.h>
++#include <remote_io/remote_io.h>
+ 
+ 
+ /* Reserve storage for the data of the file associated with FD.  */
+ int
+ fallocate64 (int fd, int mode, __off64_t offset, __off64_t len)
+ {
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_fallocate (fd, mode, offset, len);
++#else
+   return SYSCALL_CANCEL (fallocate, fd, mode,
+ 			 SYSCALL_LL64 (offset), SYSCALL_LL64 (len));
++#endif
+ }
+ 
+ #ifdef __OFF_T_MATCHES_OFF64_T
+diff --git a/sysdeps/unix/sysv/linux/fcntl_nocancel.c b/sysdeps/unix/sysv/linux/fcntl_nocancel.c
+index bafc1cff5f..c3652a678b 100644
+--- a/sysdeps/unix/sysv/linux/fcntl_nocancel.c
++++ b/sysdeps/unix/sysv/linux/fcntl_nocancel.c
+@@ -21,6 +21,7 @@
+ #include <errno.h>
+ #include <sysdep-cancel.h>
+ #include <not-cancel.h>
++#include <remote_io/remote_io.h>
+ 
+ #ifndef __NR_fcntl64
+ # define __NR_fcntl64 __NR_fcntl
+@@ -61,5 +62,10 @@ __fcntl64_nocancel_adjusted (int fd, int cmd, void *arg)
+         (INTERNAL_SYSCALL_ERRNO (res, err));
+     }
+ 
++#if !IS_IN(rtld) && defined SHARED
++  if (cmd == F_GETFL || cmd == F_SETFL || F_GETFD)
++    return pcn_fcntl (fd, cmd, (void *) arg);
++#endif
++
+   return INLINE_SYSCALL_CALL (fcntl64, fd, cmd, (void *) arg);
+ }
 diff --git a/sysdeps/unix/sysv/linux/fxstatat.c b/sysdeps/unix/sysv/linux/fxstatat.c
 index 524d5a6df6..d633f160da 100644
 --- a/sysdeps/unix/sysv/linux/fxstatat.c
@@ -5862,6 +8877,120 @@ index 124f83a0ab..cd01726b15 100644
 -sysdep_routines += epoll_create inotify_init stat-check
 +sysdep_routines += inotify_init stat-check
  endif
+diff --git a/sysdeps/unix/sysv/linux/generic/pipe.c b/sysdeps/unix/sysv/linux/generic/pipe.c
+index 5d4a95f3e7..35ed20eb83 100644
+--- a/sysdeps/unix/sysv/linux/generic/pipe.c
++++ b/sysdeps/unix/sysv/linux/generic/pipe.c
+@@ -19,6 +19,7 @@
+ #include <errno.h>
+ #include <unistd.h>
+ #include <stddef.h>
++#include <remote_io/remote_io.h>
+ 
+ /* Create a one-way communication channel (__pipe).
+    If successful, two file descriptors are stored in PIPEDES;
+@@ -27,7 +28,11 @@
+ int
+ __pipe (int __pipedes[2])
+ {
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_pipe (__pipedes, 0);
++#else
+   return INLINE_SYSCALL (pipe2, 2, __pipedes, 0);
++#endif
+ }
+ libc_hidden_def (__pipe)
+ weak_alias (__pipe, pipe)
+diff --git a/sysdeps/unix/sysv/linux/generic/syscalls.list b/sysdeps/unix/sysv/linux/generic/syscalls.list
+index ed8b216d47..664df694ce 100644
+--- a/sysdeps/unix/sysv/linux/generic/syscalls.list
++++ b/sysdeps/unix/sysv/linux/generic/syscalls.list
+@@ -1,12 +1,7 @@
+ # File name	Caller	Syscall name	# args	Strong name	Weak names
+ 
+ # Socket APIs
+-socket		-	socket		i:iii	__socket	socket
+ socketpair	-	socketpair	i:iiif	__socketpair	socketpair
+-bind		-	bind		i:ipi	__bind		bind
+-listen		-	listen		i:ii	__listen	listen
+ getsockname	-	getsockname	i:ipp	__getsockname	getsockname
+ getpeername	-	getpeername	i:ipp	__getpeername	getpeername
+-setsockopt	-	setsockopt	i:iiibn	__setsockopt	setsockopt
+-getsockopt	-	getsockopt	i:iiiBN	__getsockopt	getsockopt
+ shutdown	-	shutdown	i:ii	__shutdown	shutdown
+diff --git a/sysdeps/unix/sysv/linux/getcwd.c b/sysdeps/unix/sysv/linux/getcwd.c
+index fabc4bb8cc..64532dfce0 100644
+--- a/sysdeps/unix/sysv/linux/getcwd.c
++++ b/sysdeps/unix/sysv/linux/getcwd.c
+@@ -26,6 +26,7 @@
+ 
+ #include <sysdep.h>
+ #include <sys/syscall.h>
++#include <remote_io/remote_io.h>
+ 
+ 
+ /* If we compile the file for use in ld.so we don't need the feature
+@@ -75,7 +76,12 @@ __getcwd (char *buf, size_t size)
+ 
+   int retval;
+ 
++#if !IS_IN(rtld) && defined SHARED
++  retval = pcn_getcwd (path, alloc_size);
++#else
+   retval = INLINE_SYSCALL (getcwd, 2, path, alloc_size);
++#endif
++
+   if (retval > 0 && path[0] == '/')
+     {
+ #ifndef NO_ALLOCATION
+diff --git a/sysdeps/unix/sysv/linux/getsockopt.c b/sysdeps/unix/sysv/linux/getsockopt.c
+index 11939660c1..844824839a 100644
+--- a/sysdeps/unix/sysv/linux/getsockopt.c
++++ b/sysdeps/unix/sysv/linux/getsockopt.c
+@@ -22,14 +22,19 @@
+ #include <socketcall.h>
+ #include <kernel-features.h>
+ #include <sys/syscall.h>
++#include <remote_io/remote_io.h>
+ 
+ int
+ __getsockopt (int fd, int level, int optname, void *optval, socklen_t *len)
+ {
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_getsockopt (fd, level, optname, optval, len);
++#else
+ #ifdef __ASSUME_GETSOCKOPT_SYSCALL
+   return INLINE_SYSCALL (getsockopt, 5, fd, level, optname, optval, len);
+ #else
+   return SOCKETCALL (getsockopt, fd, level, optname, optval, len);
+ #endif
++#endif
+ }
+ weak_alias (__getsockopt, getsockopt)
+diff --git a/sysdeps/unix/sysv/linux/listen.c b/sysdeps/unix/sysv/linux/listen.c
+index 124c2fed74..4775e502d1 100644
+--- a/sysdeps/unix/sysv/linux/listen.c
++++ b/sysdeps/unix/sysv/linux/listen.c
+@@ -22,14 +22,19 @@
+ #include <socketcall.h>
+ #include <kernel-features.h>
+ #include <sys/syscall.h>
++#include <remote_io/remote_io.h>
+ 
+ int
+ listen (int fd, int backlog)
+ {
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_listen (fd, backlog);
++#else
+ #ifdef __ASSUME_LISTEN_SYSCALL
+   return INLINE_SYSCALL (listen, 2, fd, backlog);
+ #else
+   return SOCKETCALL (listen, fd, backlog);
+ #endif
++#endif
+ }
+ weak_alias (listen, __listen);
 diff --git a/sysdeps/unix/sysv/linux/mmap.c b/sysdeps/unix/sysv/linux/mmap.c
 index 22f276bb14..a101a36239 100644
 --- a/sysdeps/unix/sysv/linux/mmap.c
@@ -6036,11 +9165,85 @@ index 80fe66210d..a63648d61c 100644
  /* Linux openat syscall implementation, LFS, non-cancellable.
     Copyright (C) 2018-2020 Free Software Foundation, Inc.
     This file is part of the GNU C Library.
+diff --git a/sysdeps/unix/sysv/linux/poll.c b/sysdeps/unix/sysv/linux/poll.c
+index 1c41ade1b7..db1e018e32 100644
+--- a/sysdeps/unix/sysv/linux/poll.c
++++ b/sysdeps/unix/sysv/linux/poll.c
+@@ -21,12 +21,17 @@
+ 
+ #include <sysdep-cancel.h>
+ #include <sys/syscall.h>
++#include <remote_io/remote_io.h>
+ 
+ int
+ __poll (struct pollfd *fds, nfds_t nfds, int timeout)
+ {
+ #ifdef __NR_poll
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_poll  (fds, nfds, timeout);
++#else
+   return SYSCALL_CANCEL (poll, fds, nfds, timeout);
++#endif
+ #else
+   struct timespec timeout_ts;
+   struct timespec *timeout_ts_p = NULL;
+@@ -38,8 +43,12 @@ __poll (struct pollfd *fds, nfds_t nfds, int timeout)
+       timeout_ts_p = &timeout_ts;
+     }
+ 
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_ppoll (fds, nfds, timeout_ts_p, NULL);
++#else
+   return SYSCALL_CANCEL (ppoll, fds, nfds, timeout_ts_p, NULL, 0);
+ #endif
++#endif
+ }
+ libc_hidden_def (__poll)
+ weak_alias (__poll, poll)
+diff --git a/sysdeps/unix/sysv/linux/ppoll.c b/sysdeps/unix/sysv/linux/ppoll.c
+index 3fcd19efb4..970f0bb33b 100644
+--- a/sysdeps/unix/sysv/linux/ppoll.c
++++ b/sysdeps/unix/sysv/linux/ppoll.c
+@@ -22,7 +22,7 @@
+ #include <sys/poll.h>
+ #include <sysdep-cancel.h>
+ #include <kernel-features.h>
+-
++#include <remote_io/remote_io.h>
+ 
+ int
+ __ppoll64 (struct pollfd *fds, nfds_t nfds, const struct __timespec64 *timeout,
+@@ -41,7 +41,11 @@ __ppoll64 (struct pollfd *fds, nfds_t nfds, const struct __timespec64 *timeout,
+ # ifndef __NR_ppoll_time64
+ #  define __NR_ppoll_time64 __NR_ppoll
+ # endif
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_ppoll (fds, nfds, timeout, sigmask);
++#else
+   return SYSCALL_CANCEL (ppoll_time64, fds, nfds, timeout, sigmask, _NSIG / 8);
++#endif
+ #else
+ # ifdef __NR_ppoll_time64
+   int ret = SYSCALL_CANCEL (ppoll_time64, fds, nfds, timeout, sigmask,
+@@ -61,9 +65,13 @@ __ppoll64 (struct pollfd *fds, nfds_t nfds, const struct __timespec64 *timeout,
+       ts32 = valid_timespec64_to_timespec (*timeout);
+     }
+ 
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_ppoll (fds, nfds, timeout ? &ts32 : NULL, sigmask);
++#else
+   return SYSCALL_CANCEL (ppoll, fds, nfds, timeout ? &ts32 : NULL, sigmask,
+                          _NSIG / 8);
+ #endif
++#endif
+ }
+ 
+ #if __TIMESIZE != 64
 diff --git a/sysdeps/unix/sysv/linux/read.c b/sysdeps/unix/sysv/linux/read.c
-index 64f558a587..f75fa90dac 100644
+index 64f558a587..f6fc16f693 100644
 --- a/sysdeps/unix/sysv/linux/read.c
 +++ b/sysdeps/unix/sysv/linux/read.c
-@@ -18,12 +18,17 @@
+@@ -18,12 +18,13 @@
  
  #include <unistd.h>
  #include <sysdep-cancel.h>
@@ -6050,11 +9253,8 @@ index 64f558a587..f75fa90dac 100644
  ssize_t
  __libc_read (int fd, void *buf, size_t nbytes)
  {
-+#if IS_IN(libc) && defined SHARED
+-  return SYSCALL_CANCEL (read, fd, buf, nbytes);
 +  return pcn_read (fd, buf, nbytes);
-+#else
-   return SYSCALL_CANCEL (read, fd, buf, nbytes);
-+#endif
  }
  libc_hidden_def (__libc_read)
  
@@ -6078,6 +9278,84 @@ index f9d8a3b563..b7839cc224 100644
 +#endif
  }
  hidden_def (__read_nocancel)
+diff --git a/sysdeps/unix/sysv/linux/setsockopt.c b/sysdeps/unix/sysv/linux/setsockopt.c
+index 20c0868783..081a357246 100644
+--- a/sysdeps/unix/sysv/linux/setsockopt.c
++++ b/sysdeps/unix/sysv/linux/setsockopt.c
+@@ -22,14 +22,19 @@
+ #include <socketcall.h>
+ #include <kernel-features.h>
+ #include <sys/syscall.h>
++#include <remote_io/remote_io.h>
+ 
+ int
+ setsockopt (int fd, int level, int optname, const void *optval, socklen_t len)
+ {
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_setsockopt (fd, level, optname, optval, len);
++#else
+ #ifdef __ASSUME_SETSOCKOPT_SYSCALL
+   return INLINE_SYSCALL (setsockopt, 5, fd, level, optname, optval, len);
+ #else
+   return SOCKETCALL (setsockopt, fd, level, optname, optval, len);
+ #endif
++#endif
+ }
+ weak_alias (setsockopt, __setsockopt)
+diff --git a/sysdeps/unix/sysv/linux/sigaction.c b/sysdeps/unix/sysv/linux/sigaction.c
+index 4e6d11a6ae..8975fb757c 100644
+--- a/sysdeps/unix/sysv/linux/sigaction.c
++++ b/sysdeps/unix/sysv/linux/sigaction.c
+@@ -26,6 +26,8 @@
+    architecture requires for compat mode and/or due old ABI.  */
+ #include <kernel_sigaction.h>
+ 
++#include <remote_io/remote_io.h>
++
+ #ifndef SA_RESTORER
+ # define SET_SA_RESTORER(kact, act)
+ # define RESET_SA_RESTORER(act, kact)
+@@ -55,9 +57,15 @@ __libc_sigaction (int sig, const struct sigaction *act, struct sigaction *oact)
+ 
+   /* XXX The size argument hopefully will have to be changed to the
+      real size of the user-level sigset_t.  */
++#if !IS_IN(rtld) && defined SHARED
++  result = pcn_sigaction (sig,
++			  act ? &kact : NULL,
++			  oact ? &koact : NULL, STUB (act, _NSIG / 8));
++#else
+   result = INLINE_SYSCALL_CALL (rt_sigaction, sig,
+ 				act ? &kact : NULL,
+ 				oact ? &koact : NULL, STUB (act, _NSIG / 8));
++#endif
+ 
+   if (oact && result >= 0)
+     {
+diff --git a/sysdeps/unix/sysv/linux/socket.c b/sysdeps/unix/sysv/linux/socket.c
+index efa0e34467..75389e8066 100644
+--- a/sysdeps/unix/sysv/linux/socket.c
++++ b/sysdeps/unix/sysv/linux/socket.c
+@@ -22,15 +22,20 @@
+ #include <socketcall.h>
+ #include <kernel-features.h>
+ #include <sys/syscall.h>
++#include <remote_io/remote_io.h>
+ 
+ int
+ __socket (int fd, int type, int domain)
+ {
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_socket (fd, type, domain);
++#else
+ #ifdef __ASSUME_SOCKET_SYSCALL
+   return INLINE_SYSCALL (socket, 3, fd, type, domain);
+ #else
+   return SOCKETCALL (socket, fd, type, domain);
+ #endif
++#endif
+ }
+ libc_hidden_def (__socket)
+ weak_alias (__socket, socket)
 diff --git a/sysdeps/unix/sysv/linux/syscalls.list b/sysdeps/unix/sysv/linux/syscalls.list
 index 52e6dafc86..f633acaff9 100644
 --- a/sysdeps/unix/sysv/linux/syscalls.list
@@ -6508,7 +9786,7 @@ index 0000000000..8df4b427c8
 +#endif
 diff --git a/sysdeps/unix/sysv/linux/x86_64/epoll_wait.c b/sysdeps/unix/sysv/linux/x86_64/epoll_wait.c
 new file mode 100644
-index 0000000000..2191a66801
+index 0000000000..745158f1db
 --- /dev/null
 +++ b/sysdeps/unix/sysv/linux/x86_64/epoll_wait.c
 @@ -0,0 +1,100 @@
@@ -6569,9 +9847,9 @@ index 0000000000..2191a66801
 +  struct linux_epoll_event lee[maxevents];
 +
 +#ifdef __NR_epoll_wait
-+  res = SYSCALL_CANCEL (epoll_wait, epfd, events, maxevents, timeout);
++  res = SYSCALL_CANCEL (epoll_wait, epfd, lee, maxevents, timeout);
 +#else
-+  res = epoll_pwait (epfd, events, maxevents, timeout, NULL);
++  res = epoll_pwait (epfd, lee, maxevents, timeout, NULL);
 +#endif
 +
 +  if (res <= 0)
@@ -6685,6 +9963,86 @@ index 0000000000..01c6c2830f
 +strong_alias (__fxstat, __fxstat64);
 +hidden_ver (__fxstat, __fxstat64)
 +
+diff --git a/sysdeps/unix/sysv/linux/x86_64/kernel-features.h b/sysdeps/unix/sysv/linux/x86_64/kernel-features.h
+index 80ff5684a7..8185c060af 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/kernel-features.h
++++ b/sysdeps/unix/sysv/linux/x86_64/kernel-features.h
+@@ -23,4 +23,14 @@
+ # define __ASSUME_WORDSIZE64_ILP32	1
+ #endif
+ 
++# define __ASSUME_SOCKET_SYSCALL             1
++# define __ASSUME_SOCKETPAIR_SYSCALL         1
++# define __ASSUME_BIND_SYSCALL               1
++# define __ASSUME_LISTEN_SYSCALL             1
++# define __ASSUME_GETSOCKOPT_SYSCALL         1
++# define __ASSUME_SETSOCKOPT_SYSCALL         1
++# define __ASSUME_GETSOCKNAME_SYSCALL        1
++# define __ASSUME_GETPEERNAME_SYSCALL        1
++# define __ASSUME_SHUTDOWN_SYSCALL           1
++
+ #include_next <kernel-features.h>
+diff --git a/sysdeps/unix/sysv/linux/x86_64/pipe.c b/sysdeps/unix/sysv/linux/x86_64/pipe.c
+new file mode 100644
+index 0000000000..005f58debc
+--- /dev/null
++++ b/sysdeps/unix/sysv/linux/x86_64/pipe.c
+@@ -0,0 +1,38 @@
++/* Copyright (C) 2011-2020 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++   Contributed by Chris Metcalf <cmetcalf@tilera.com>, 2011.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library.  If not, see
++   <https://www.gnu.org/licenses/>.  */
++
++#include <errno.h>
++#include <unistd.h>
++#include <stddef.h>
++#include <remote_io/remote_io.h>
++
++/* Create a one-way communication channel (__pipe).
++   If successful, two file descriptors are stored in PIPEDES;
++   bytes written on PIPEDES[1] can be read from PIPEDES[0].
++   Returns 0 if successful, -1 if not.  */
++int
++__pipe (int __pipedes[2])
++{
++#if !IS_IN(rtld) && defined SHARED
++  return pcn_pipe (__pipedes, 0);
++#else
++  return INLINE_SYSCALL (pipe, 1, __pipedes);
++#endif
++}
++libc_hidden_def (__pipe)
++weak_alias (__pipe, pipe)
+diff --git a/sysdeps/unix/sysv/linux/x86_64/syscalls.list b/sysdeps/unix/sysv/linux/x86_64/syscalls.list
+index d46524eff3..ff9e9f267a 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/syscalls.list
++++ b/sysdeps/unix/sysv/linux/x86_64/syscalls.list
+@@ -6,12 +6,7 @@ syscall_clock_gettime	EXTRA	clock_gettime	Ei:ip		__syscall_clock_gettime
+ 
+ 
+ # proper socket implementations:
+-bind		-	bind		i:ipi	__bind		bind
+ getpeername	-	getpeername	i:ipp	__getpeername	getpeername
+ getsockname	-	getsockname	i:ipp	__getsockname	getsockname
+-getsockopt	-	getsockopt	i:iiiBN	__getsockopt	getsockopt
+-listen		-	listen		i:ii	__listen	listen
+-setsockopt	-	setsockopt	i:iiibn	__setsockopt	setsockopt
+ shutdown	-	shutdown	i:ii	__shutdown	shutdown
+-socket		-	socket		i:iii	__socket	socket
+ socketpair	-	socketpair	i:iiif	__socketpair	socketpair
 diff --git a/sysdeps/unix/sysv/linux/x86_64/sysdep.h b/sysdeps/unix/sysv/linux/x86_64/sysdep.h
 index c7f740a1df..015cc95b4b 100644
 --- a/sysdeps/unix/sysv/linux/x86_64/sysdep.h

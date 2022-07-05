@@ -678,7 +678,8 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
                 '--without-cvs',
                 '--disable-profile',
                 '--without-gd',
-                'CFLAGS={}'.format("-Og -g3")]
+                'CFLAGS={}'.format("-Og -g3"),
+                '--with-nonshared-cflags={}'.format("-ffunction-sections -fdata-sections")]
         run_cmd('Configure glibc Stage 1 for ' + target, args)
 
         args = ['make', 'install-bootstrap-headers=yes', 'install-headers',
@@ -819,7 +820,8 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
                 '--without-selinux',
                 'libc_cv_slibdir=/lib',
                 'libc_cv_rtlddir=/lib',
-                'CFLAGS={}'.format("-Og -g3")]
+                'CFLAGS={}'.format("-Og -g3"),
+                '--with-nonshared-cflags={}'.format("-ffunction-sections -fdata-sections")]
         run_cmd('Configure glibc Stage 2 for ' + target, args)
 
         args = ['make', '-j{}'.format(num_threads)]
@@ -949,7 +951,8 @@ def install_glibc(base_path, install_path, install_targets, num_threads):
                 '--without-cvs',
                 '--disable-profile',
                 '--without-gd',
-                'CFLAGS={}'.format("-Og -g3")]
+                'CFLAGS={}'.format("-Og -g3"),
+                '--with-nonshared-cflags={}'.format("-ffunction-sections -fdata-sections")]
         run_cmd('Configure glibc Stage 1 for ' + target, args)
 
         args = ['make', 'install-bootstrap-headers=yes', 'install-headers',
@@ -1019,7 +1022,8 @@ def install_glibc(base_path, install_path, install_targets, num_threads):
                 '--without-selinux',
                 'libc_cv_slibdir=/lib',
                 'libc_cv_rtlddir=/lib',
-                'CFLAGS={}'.format("-Og -g3")]
+                'CFLAGS={}'.format("-Og -g3"),
+                '--with-nonshared-cflags={}'.format("-ffunction-sections -fdata-sections")]
         run_cmd('Configure glibc Stage 2 for ' + target, args)
 
         args = ['make', '-j{}'.format(num_threads)]

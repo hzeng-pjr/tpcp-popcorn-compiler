@@ -98,6 +98,9 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		lio_dbg_printf ("pid = %u\n", lio_getpid ());
 		lio_dbg_printf ("thread_pointer = %lx\n", tls_dst);
 
+		/* Unload any signal handlers.  */
+		pcn_unload_signals ();
+
 		//test_signals ();
 		//test_lio_signals ();
 
@@ -264,6 +267,9 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 #endif
 
  pcn_cont:
+	/* Restore any signal handlers.  */
+	pcn_restore_signals ();
+
 	/* Activate the remote_io serverc.  */
 	pd->pcn_remote_io_active = PCN_SERVER_READY;
 

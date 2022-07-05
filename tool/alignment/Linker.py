@@ -133,7 +133,7 @@ def getObjectFileFromSymbol(symbol, archEnum):
 	# rather than Library(ObjectFile).
 	file = symbol.getObjectFile(archEnum)
 	
-	reLib = "^(.+\.a)\((.+\.o)\)" # To check if it comes from an archive
+	reLib = "^(.+\.a)\((.+\.oS?)\)" # To check if it comes from an archive
 	lib = re.match(reLib, file)
 
 	if (not lib):
