@@ -2,6 +2,7 @@
 #define IO_H
 
 #include <unistd.h>
+#include <stdarg.h>
 #include <stddef.h>
 #include <sys/mman.h>
 #include <signal.h>
@@ -62,8 +63,13 @@ extern int lio_dbg_printf (const char *fmt, ...);
 extern int lio_fprintf (int fd, const char *fmt, ...);
 extern int lio_snprintf (char *str, size_t size, const char *fmt, ...);
 extern void lio_print (char *str);
-extern void lio_error (char *str);
+extern void lio_error (const char *restrict fmt, ...);
 extern void lio_assert (int cond, char *msg, char *file, int lineno);
+
+extern int rio_dbg_printf (const char *fmt, ...);
+extern int rio_dbg_fprintf (int fd, const char *fmt, ...);
+extern int rio_dbg_snprintf (char *str, size_t size, const char *fmt, ...);
+extern int rio_dbg_vfprintf (int fd, const char *restrict fmt, va_list arg);
 
 extern void *lio_malloc (size_t size);
 extern void lio_free (void *ptr);

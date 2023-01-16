@@ -1,0 +1,21 @@
+diff --git a/src/Event.c b/src/Event.c
+index dadcede..58693eb 100644
+--- a/src/Event.c
++++ b/src/Event.c
+@@ -75,6 +75,8 @@ in this Software without prior written authorization from The Open Group.
+ #include "Shell.h"
+ #include "StringDefs.h"
+ 
++void check_migrate(void (*callback) (void *), void *callback_data);
++
+ typedef struct _XtEventRecExt {
+     int type;
+     XtPointer select_data[1];   /* actual dimension is [mask] */
+@@ -1611,6 +1613,7 @@ XtAppMainLoop(XtAppContext app)
+ 
+     LOCK_APP(app);
+     do {
++        check_migrate (NULL, NULL);
+         if (m == 0) {
+             m = XtIMAll;
+             /* wait for any event, blocking */

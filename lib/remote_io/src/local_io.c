@@ -184,9 +184,15 @@ lio_print (char *str)
 }
 
 void
-lio_error (char *str)
+lio_error (const char *restrict fmt, ...)
 {
-  lio_print (str);
+  va_list arg;
+
+  va_start (arg, fmt);
+  rio_dbg_vfprintf (STDOUT_FILENO, fmt, arg);
+  va_end (arg);
+
+  lio_spin ();
   lio_exit (-1);
 }
 

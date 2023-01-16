@@ -46,8 +46,10 @@ class Linker:
                                         # one ISA and static libraries in the other
                                         if section == ".text":
                                                 output_buffer.append(".text 0x700000: ALIGN(0x100000)\n")
+                                        elif section == ".fini":
+                                                output_buffer.append(".fini 0xa00000: ALIGN(0x100000)\n")
                                         elif section == ".rodata":
-                                                output_buffer.append(".rodata 0x900000: ALIGN(0x100000)\n")
+                                                output_buffer.append(".rodata 0xb00000: ALIGN(0x100000)\n")
                                         else:
 					        output_buffer.append(section + "\t: ALIGN(0x100000)\n")
 					output_buffer.append("{\n")

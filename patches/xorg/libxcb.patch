@@ -1,0 +1,13 @@
+diff --git a/configure.ac b/configure.ac
+index adb48e7..37b2a24 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -133,7 +133,7 @@ fi
+ 
+ case x$have_sendmsg in
+ xyes)
+-        AC_DEFINE([HAVE_SENDMSG],1,[Define if your platform supports sendmsg])
++        AC_DEFINE([HAVE_SENDMSG],0,[Define if your platform supports sendmsg])
+         ;;
+ esac
+ 

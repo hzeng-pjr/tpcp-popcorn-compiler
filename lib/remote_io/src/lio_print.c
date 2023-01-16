@@ -1,29 +1,45 @@
+/* This file is a modified version of dl-minimal.c.  */
+
 #include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdarg.h>
 #include <sys/uio.h>
+#include <unistd.h>
+
 #include <popcorn.h>
 #include "local_io.h"
 
+/* pcn_mode is defined elsewhere in glibc. It's set to 1 if the code
+   is running in the RIO server, or 0 otherwise.  */
+int pcn_mode = 0;
+
+/* This function should be defined in glibc.  */
+static int
+rio_debug (void)
+{
+  return pcn_data->rio_debug == 1 || pcn_data->rio_debug == 3;
+}
+
 #define MIN(a,b) (((a)<(b))?(a):(b))
-const char _itoa_lower_digits[16] = "0123456789abcdef";
+const char _itoa_lower_digits_rio[16] = "0123456789abcdef";
 
 #if defined(__x86_64__) || defined(__aarch64__)
 #define NEED_L
 #endif
 
+#define RIO_PRINTBUF_SZ 512
+static char rio_printbuf[RIO_PRINTBUF_SZ];
+
 /* We always use _itoa instead of _itoa_word in ld.so since the former
    also has to be present and it is never about speed when these
    functions are used.  */
-char *
+static char *
 pcn_itoa (unsigned long long int value, char *buflim, unsigned int base,
        int upper_case)
 {
   assert (! upper_case);
 
   do
-    *--buflim = _itoa_lower_digits[value % base];
+    *--buflim = _itoa_lower_digits_rio[value % base];
   while ((value /= base) != 0);
 
   return buflim;
@@ -48,47 +64,29 @@ write_str (char *str, size_t size, struct iovec *iov, int niov)
   return ix;
 }
 
+//#pragma GCC optimize ("O0")
 /* Bare-bones printf implementation.  This function only knows about
    the formats and flags needed and can handle only up to 64 stripes in
    the output.  */
 static int
 pcn_dl_debug_vdprintf (int fd, int tag_p, char *str, size_t size,
-		       const char *fmt, va_list arg)
+                       const char *fmt, va_list arg)
 {
 # define NIOVMAX 64
   struct iovec iov[NIOVMAX];
   int niov = 0;
-  pid_t pid = 0;
-  char pidbuf[12];
+  const char *server_msg = "> pcn_server: ";
+
+  if (pcn_mode == 1)
+    {
+      iov[0].iov_base = (void *)server_msg;
+      iov[0].iov_len = lio_strlen (server_msg);
+      niov++;
+    }
 
   while (*fmt != '\0')
     {
       const char *startp = fmt;
-
-      if (tag_p > 0)
-	{
-	  /* Generate the tag line once.  It consists of the PID and a
-	     colon followed by a tab.  */
-	  if (pid == 0)
-	    {
-	      char *p;
-	      pid = lio_getpid ();
-	      assert (pid >= 0 && sizeof (pid_t) <= 4);
-	      p = pcn_itoa (pid, &pidbuf[10], 10, 0);
-	      while (p > pidbuf)
-		*--p = ' ';
-	      pidbuf[10] = ':';
-	      pidbuf[11] = '\t';
-	    }
-
-	  /* Append to the output.  */
-	  assert (niov < NIOVMAX);
-	  iov[niov].iov_len = 12;
-	  iov[niov++].iov_base = pidbuf;
-
-	  /* No more tags until we see the next newline.  */
-	  tag_p = -1;
-	}
 
       /* Skip everything except % and \n (if tags are needed).  */
       while (*fmt != '\0' && *fmt != '%' && (! tag_p || *fmt != '\n'))
@@ -145,6 +143,44 @@ pcn_dl_debug_vdprintf (int fd, int tag_p, char *str, size_t size,
 	  switch (*fmt)
 	    {
 	      /* Integer formatting.  */
+            case 'd':
+	      {
+		long int num;
+                int inum;
+
+		/* We have to make a difference if long and int have a
+		   different size.  */
+                if (long_mod)
+                  num = va_arg (arg, unsigned long int);
+                else
+                  {
+                    inum = va_arg (arg, unsigned int);
+                    num = inum; // sign extend
+                  }
+
+                long int abs_num = num < 0 ? -num : num;
+
+		/* We use alloca() to allocate the buffer with the most
+		   pessimistic guess for the size.  Using alloca() allows
+		   having more than one integer formatting in a call.  */
+		char *buf = (char *) __builtin_alloca (3 * sizeof (long int));
+		char *endp = &buf[3 * sizeof (long int)];
+		char *cp = pcn_itoa (abs_num, endp, *fmt == 'x' ? 16 : 10, 0);
+
+                if (num < 0)
+                  *--cp = '-';
+
+		/* Pad to the width the user specified.  */
+		if (width != -1)
+		  while (endp - cp < width)
+		    *--cp = fill;
+
+		iov[niov].iov_base = cp;
+		iov[niov].iov_len = endp - cp;
+		++niov;
+	      }
+	      break;
+
 	    case 'u':
 	    case 'x':
 	      {
@@ -191,7 +227,10 @@ pcn_dl_debug_vdprintf (int fd, int tag_p, char *str, size_t size,
 	      break;
 
 	    default:
-	      lio_error ("invalid format specifier\n");
+              {
+                int c = *fmt;
+	        lio_error ("invalid format specifier '%d'\n", c);
+              }
 	    }
 	  ++fmt;
 	}
@@ -217,7 +256,83 @@ pcn_dl_debug_vdprintf (int fd, int tag_p, char *str, size_t size,
   if (str != NULL)
     return write_str (str, size, iov, niov);
   else
-    return lio_writev (fd, iov, niov);
+    {
+      /* Write diagnostics to a string, so that server and client
+	 messages don't overwrite one another.  */
+      int len = write_str (rio_printbuf, RIO_PRINTBUF_SZ, iov, niov);
+      return lio_write (fd, rio_printbuf, len);
+    }
+}
+
+/* Write to debug file.  */
+int
+rio_dbg_printf (const char *fmt, ...)
+{
+  va_list arg;
+  int ret;
+
+  if (!rio_debug ())
+    return 0;
+
+  va_start (arg, fmt);
+  ret = pcn_dl_debug_vdprintf (STDOUT_FILENO, 0, NULL, 0, fmt, arg);
+  va_end (arg);
+
+  return ret;
+}
+
+/* Write to debug file.  */
+int
+rio_dbg_fprintf (int fd, const char *fmt, ...)
+{
+  va_list arg;
+  int ret;
+
+  if (rio_debug ())
+    return 0;
+
+  va_start (arg, fmt);
+  ret = pcn_dl_debug_vdprintf (fd, 0, NULL, 0, fmt, arg);
+  va_end (arg);
+
+  return ret;
+}
+
+int
+rio_dbg_snprintf (char *str, size_t size, const char *fmt, ...)
+{
+  va_list arg;
+  int ret, t;
+
+  t = pcn_mode;
+  pcn_mode = 0;
+
+  va_start (arg, fmt);
+  ret = pcn_dl_debug_vdprintf (-1, 0, str, size, fmt, arg);
+  va_end (arg);
+
+  pcn_mode = t;
+
+  return ret;
+}
+
+int
+rio_dbg_vfprintf (int fd, const char *restrict fmt, va_list arg)
+{
+  return pcn_dl_debug_vdprintf (fd, 0, NULL, 0, fmt, arg);
+}
+
+int
+lio_dbg_printf (const char *fmt, ...)
+{
+  va_list arg;
+  int ret;
+
+  va_start (arg, fmt);
+  ret = pcn_dl_debug_vdprintf (STDOUT_FILENO, 0, NULL, 0, fmt, arg);
+  va_end (arg);
+
+  return ret;
 }
 
 
@@ -257,24 +372,6 @@ lio_snprintf (char *str, size_t size, const char *fmt, ...)
 
   va_start (arg, fmt);
   ret = pcn_dl_debug_vdprintf (-1, 0, str, size, fmt, arg);
-  va_end (arg);
-
-  return ret;
-}
-
-
-int
-lio_dbg_printf (const char *fmt, ...)
-{
-  va_list arg;
-  int ret;
-  struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
-
-  if (pd->rio_debug == 0)
-    return 0;
-
-  va_start (arg, fmt);
-  ret = pcn_dl_debug_vdprintf (STDOUT_FILENO, 0, NULL, 0, fmt, arg);
   va_end (arg);
 
   return ret;

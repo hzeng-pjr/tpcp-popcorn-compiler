@@ -20,8 +20,6 @@
 #include "debug.h"
 #include "system.h"
 
-static struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
-
 int a = 100;
 int __thread b;
 
@@ -63,7 +61,7 @@ union {
 static void* __attribute__((noinline))
 get_call_site() { return __builtin_return_address(0); };
 
-static void dummy(){lio_dbg_printf("%s: called\n", __func__);};
+static void dummy(){rio_dbg_printf("%s: called\n", __func__);};
 
 void
 __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *callback_data)
@@ -74,7 +72,6 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 	int i, fd, pt_dyn;
 	void *t, *ld_start;
 	int err, ret;
-	char buf[INET_ADDRSTRLEN];
 
 	if (!get_restore_context())		// Invoke migration
 	{
@@ -89,14 +86,14 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		struct ksigaction kact, koact;
 
 		b = 555;
-		tls_dst = pd->thread_pointer;
+		tls_dst = pcn_data->thread_pointer;
 
 		/* Deactivate the remote_io server while unloading libc.  */
-		pd->pcn_remote_io_active = 0;
+		pcn_data->pcn_remote_io_active = 0;
 
-		lio_dbg_printf ("pcn_server_port = %u\n", pd->pcn_server_port);
-		lio_dbg_printf ("pid = %u\n", lio_getpid ());
-		lio_dbg_printf ("thread_pointer = %lx\n", tls_dst);
+		rio_dbg_printf ("pcn_server_port = %u\n", pcn_data->pcn_server_port);
+		rio_dbg_printf ("pid = %u\n", lio_getpid ());
+		rio_dbg_printf ("thread_pointer = %lx\n", tls_dst);
 
 		/* Unload any signal handlers.  */
 		pcn_unload_signals ();
@@ -106,16 +103,15 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 
 		/* Inform the I/O server of the impending migration.  */
 		pcn_migrate ();
-		close (pd->pcn_server_sockfd);
 
 		_dl_rio_populate_dso_entries ();
 		print_all_dso ();
 		unload_libs ();
-		lio_dbg_printf ("unload complete\n");
+		rio_dbg_printf ("unload complete\n");
 
 		GET_LOCAL_REGSET(regs_src);
 
-		lio_dbg_printf ("GET_LOCAL_REGSET complete\n");
+		rio_dbg_printf ("GET_LOCAL_REGSET complete\n");
 
 		err = 0;
 		switch (dst_arch) {
@@ -123,14 +119,14 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 				err = !REWRITE_STACK(regs_src, regs_dst,
 						     dst_arch);
 				regs_dst.aarch.__magic = 0xAABBDEADBEAF;
-				lio_dbg_printf ("rewrote stack\n");
+				rio_dbg_printf ("rewrote stack\n");
 				dump_regs_aarch64(&regs_dst.aarch, LOG_FILE);
 				break;
 			case ARCH_X86_64:
 				err = !REWRITE_STACK(regs_src, regs_dst,
 						     dst_arch);
 				regs_dst.x86.__magic = 0xA8664DEADBEAF;
-				lio_dbg_printf ("rewrote stack\n");
+				rio_dbg_printf ("rewrote stack\n");
 				dump_regs_x86_64(&regs_dst.x86, LOG_FILE);
 				break;
 			case ARCH_POWERPC64:
@@ -142,14 +138,14 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 			default: lio_error ("Unsupported architecture!");
 		}
 		if (err) {
-			lio_dbg_printf("Could not rewrite stack!\n");
+			rio_dbg_printf("Could not rewrite stack!\n");
 			return;
 		}
-		lio_dbg_printf("dest arch is %u\n", dst_arch);
+		rio_dbg_printf("dest arch is %u\n", dst_arch);
 
-		lio_dbg_printf("%s %u\n", __func__, __LINE__);
+		rio_dbg_printf("%s %u\n", __func__, __LINE__);
 		set_restore_context(1);
-		lio_dbg_printf("%s %u\n", __func__, __LINE__);
+		rio_dbg_printf("%s %u\n", __func__, __LINE__);
 		clear_migrate_flag();
 
 		//signal(SIGALRM, dummy);
@@ -176,7 +172,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		//sigprocmask(SIG_SETMASK, &old_sig_set, NULL);
 		lio_sigprocmask (SIG_UNBLOCK, &old_sig_set, NULL, NSIG / 8);
 
-		lio_dbg_printf("%s raising done %u\n", __func__, __LINE__);
+		rio_dbg_printf("%s raising done %u\n", __func__, __LINE__);
 		while(1);
 		return;
 	}
@@ -191,16 +187,16 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 	//__set_thread_area(get_thread_pointer(GET_TLS_POINTER, CURRENT_ARCH));
 	set_restore_context(0);
 
-	lio_dbg_printf ("pid = %u\n", lio_getpid ());
-	lio_dbg_printf ("a = %u\n", a);
-	lio_dbg_printf ("b = %u\n", b);
-	lio_dbg_printf ("dst_arch = %u\n", dst_arch);
+	rio_dbg_printf ("pid = %u\n", lio_getpid ());
+	rio_dbg_printf ("a = %u\n", a);
+	rio_dbg_printf ("b = %u\n", b);
+	rio_dbg_printf ("dst_arch = %u\n", dst_arch);
 
 	/* Populate phdrs.  */
-	fd = lio_open (pd->filename, O_RDONLY, 0);
+	fd = lio_open (pcn_data->filename, O_RDONLY, 0);
 	if (fd < 0)
 	{
-		lio_dbg_printf ("failed to open %s... ", pd->filename);
+		rio_dbg_printf ("failed to open %s... ", pcn_data->filename);
 		lio_error ("terminating");
 	}
 
@@ -209,13 +205,13 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		lio_error ("failed to read ELF header\n");
 
 //	/* Allocate more storage for the phdrs as necessary.  */
-//	if (pd->phdrs == NULL)
+//	if (pcn_data->phdrs == NULL)
 //	  {
-//	    pd->phdrs = lio_mmap (pd + pd->pcn_data_size,
+//	    pcn_data->phdrs = lio_mmap (pcn_data + pcn_data->pcn_data_size,
 //					PCN_PAGE_SIZE, PROT_READ | PROT_WRITE,
 //					MAP_PRIVATE | MAP_FIXED_NOREPLACE | MAP_ANONYMOUS,
 //					0, 0);
-//	    pd->pcn_data_size += PCN_PAGE_SIZE;
+//	    pcn_data->pcn_data_size += PCN_PAGE_SIZE;
 //	  }
 
 	phdrs = __builtin_alloca (ehdr.e_phnum * sizeof (Elf64_Phdr));
@@ -225,36 +221,36 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		lio_error ("failed to read ELF phdrs\n");
 
 	/* This won't work with PIE binaries.  */
-	pd->phnum = ehdr.e_phnum;
-	pd->phdrs = (void *)phdrs[0].p_paddr;
+	pcn_data->phnum = ehdr.e_phnum;
+	pcn_data->phdrs = (void *)phdrs[0].p_paddr;
 
-	lio_dbg_printf ("inspecting phdrs\n");
+	rio_dbg_printf ("inspecting phdrs\n");
 
 	for (i = 0; i < ehdr.e_phnum; i++)
-	  if (phdrs[i].p_paddr != ((Elf64_Phdr *) pd->phdrs)[i].p_paddr)
+	  if (phdrs[i].p_paddr != ((Elf64_Phdr *) pcn_data->phdrs)[i].p_paddr)
 	    lio_error ("invalid phdr detected\n");
  	
-	phdrs = pd->phdrs;
+	phdrs = pcn_data->phdrs;
 
 	/* Update the interpreter.  */
-	pd->maps[0].name = __builtin_alloca (MAX_INTERP);
-	get_pt_exec (fd, phdrs, pd->phnum, pd->maps[0].name);
-	lio_dbg_printf ("interpreter = %s\n", pd->maps[0].name);
+	pcn_data->maps[0].name = __builtin_alloca (MAX_INTERP);
+	get_pt_exec (fd, phdrs, pcn_data->phnum, pcn_data->maps[0].name);
+	rio_dbg_printf ("interpreter = %s\n", pcn_data->maps[0].name);
 
 	/* Reload any ISA-specific segments.  */
 	reload_dynamic (phdrs, ehdr.e_phnum, fd);
 
 	entry = ehdr.e_entry;
-	restore_rw_segments (pd->phdrs, pd->phnum, entry);
-	reset_dynamic (pd->phdrs, pd->phnum, entry,
-		       pd->argv[0], &ehdr, fd);
+	restore_rw_segments (pcn_data->phdrs, pcn_data->phnum, entry);
+	reset_dynamic (pcn_data->phdrs, pcn_data->phnum, entry,
+		       pcn_data->argv[0], &ehdr, fd);
 
 	lio_close (fd);
 
-	pd->pcn_entry = (unsigned long) &&pcn_cont;
-	ld_start = load_lib (pd->maps[0].name); // Load ld-linux
+	pcn_data->pcn_entry = (unsigned long) &&pcn_cont;
+	ld_start = load_lib (pcn_data->maps[0].name); // Load ld-linux
 
-	//lio_dbg_printf ("restoring %lu\n", lio_getpid ());
+	//rio_dbg_printf ("restoring %lu\n", lio_getpid ());
 
 	//lio_spin ();
 
@@ -271,11 +267,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 	pcn_restore_signals ();
 
 	/* Activate the remote_io serverc.  */
-	pd->pcn_remote_io_active = PCN_SERVER_READY;
-
-	inet_ntop (AF_INET, &pd->pcn_server_ip, buf, INET_ADDRSTRLEN);
-	lio_dbg_printf ("pcn remote server = %s:%u\n", buf, pd->pcn_server_port);
-	pd->pcn_server_sockfd = pcn_server_connect (pd->pcn_server_ip);
+        pcn_server_connect (0);
 }
 
 void
@@ -286,7 +278,6 @@ __migrate_shim_internal1(enum arch dst_arch, void (*callback) (void *), void *ca
 	int phnum;
 	unsigned long entry;
 	int i, fd;
-	struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
 	void *t, *ld_start;
 	int err, ret;
 
@@ -294,13 +285,13 @@ __migrate_shim_internal1(enum arch dst_arch, void (*callback) (void *), void *ca
 	sigset_t new_sig_set;
 	struct ksigaction kact, koact;
 
-	lio_dbg_printf ("entering %s...\n", __FUNCTION__);
-	lio_dbg_printf ("pid = %u\n", lio_getpid ());
+	rio_dbg_printf ("entering %s...\n", __FUNCTION__);
+	rio_dbg_printf ("pid = %u\n", lio_getpid ());
 
 	_dl_rio_populate_dso_entries ();
 	print_all_dso ();
 	unload_libs ();
-	lio_dbg_printf ("unload complete\n");
+	rio_dbg_printf ("unload complete\n");
 	
 	// Reload any shared libraries, beginning with ld-linux.
 	
@@ -335,7 +326,7 @@ __migrate_shim_internal1(enum arch dst_arch, void (*callback) (void *), void *ca
 	pcn_data->pcn_entry = (unsigned long) &&pcn_cont;
 	ld_start = load_lib (pcn_data->maps[0].name); // Load ld-linux
 
-	lio_dbg_printf ("ld_start = %lx", ld_start);
+	rio_dbg_printf ("ld_start = %lx", ld_start);
 
 	lio_spin ();
 

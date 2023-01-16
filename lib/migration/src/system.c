@@ -67,12 +67,12 @@ unload_ldso (struct mmap_entries *me)
       ret = lio_munmap ((void *)(base + this_min), this_max - this_min);
 
       if (ret)
-	lio_dbg_printf ("ld.so munmap failed\n");
+	rio_dbg_printf ("ld.so munmap failed\n");
     }
 
   lio_close (fd);
 
-  lio_dbg_printf ("Unloaded ld.so!\n");
+  rio_dbg_printf ("Unloaded ld.so!\n");
 
   return 0;
 }
@@ -83,7 +83,6 @@ unload_libs ()
   struct mmap_entries *me;
   int i, ret, len[3];
   int ps = sysconf(_SC_PAGE_SIZE);
-  struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
   int ld_linux = -1;
 
   me = pcn_data->maps;
@@ -108,9 +107,9 @@ unload_libs ()
 	ret = lio_munmap ((void *)me[i].start, me[i].size);
 
       if (ret)
-	lio_dbg_printf ("munmap %u of %lu failed\n", i+1, pcn_data->num_maps);
+	rio_dbg_printf ("munmap %u of %lu failed\n", i+1, pcn_data->num_maps);
       else
-	lio_dbg_printf ("munmap %u of %lu success\n", i+1, pcn_data->num_maps);
+	rio_dbg_printf ("munmap %u of %lu success\n", i+1, pcn_data->num_maps);
     }
 }
 
@@ -136,9 +135,8 @@ load_lib (char *lib)
   size_t addr_min = SIZE_MAX, addr_max = 0, nsegs = 0;
   size_t dyn = 0;
   unsigned long map, base;
-  struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
 
-  lio_dbg_printf ("loading %s...", lib);
+  rio_dbg_printf ("loading %s...", lib);
 
   for (i = 0; i < pcn_data->num_maps; i++)
     if (lio_strcmp (lib, pcn_data->maps[i].name) == 0)
@@ -268,7 +266,7 @@ load_lib (char *lib)
 
   lio_close (fd);
 
-  lio_dbg_printf ("success!\n");
+  rio_dbg_printf ("success!\n");
 
   return (void *) (base + ehdr.e_entry);
 }
@@ -321,7 +319,7 @@ restore_rw_segments (Elf64_Phdr *phdrs, int phnum, unsigned long entry)
 
   base = get_base_address (phdrs, phnum, entry);
 
-  //lio_printf ("%d phdrs detected; entry = %lx, base = %lx\n", phnum, entry, base);
+  //rio_dbg_printf ("%d phdrs detected; entry = %lx, base = %lx\n", phnum, entry, base);
 
   for (i = 0; i < phnum; i++)
     {
@@ -418,12 +416,10 @@ get_pt_exec (int fd, Elf64_Phdr *phdrs, int phnum, void *interp)
 void
 print_all_dso ()
 {
-  struct dl_pcn_data *pcn_data = (void *) DL_PCN_STATE;
   int i;
   unsigned long size;
-  struct dl_pcn_data *pd = (void *) DL_PCN_STATE;
 
-  if (pd->rio_debug == 0)
+  if (pcn_data->rio_debug == 0)
     return;
 
   for (i = 0; i < pcn_data->num_maps; i++)
@@ -431,7 +427,7 @@ print_all_dso ()
       size = pcn_data->maps[i].size + PAGE_SIZE - 1;
       size &= -PAGE_SIZE;
 
-      lio_printf ("%s: %lx - %lx (%lu / %lx)\n", pcn_data->maps[i].name,
+      rio_dbg_printf ("%s: %lx - %lx (%lu / %lx)\n", pcn_data->maps[i].name,
 	      pcn_data->maps[i].start,
 	      pcn_data->maps[i].start + pcn_data->maps[i].size, size,
 	      pcn_data->maps[i].start + size);
@@ -445,22 +441,20 @@ main_function (int argc, char *argv[])
   int phnum;
   unsigned long entry;
   int i;
-  struct dl_pcn_data *pcn_data;
   void *t, *ld_start;
 
   phnum = getauxval (AT_PHNUM);
   phdrs = (void *)getauxval (AT_PHDR);
   entry = getauxval (AT_ENTRY);
 
-  lio_printf ("pid = %d\n", getpid ());
+  rio_dbg_printf ("pid = %d\n", getpid ());
 
-  pcn_data = lio_mmap ((void *)DL_PCN_STATE, PAGE_SIZE, PROT_READ | PROT_WRITE,
-		      MAP_PRIVATE | MAP_FIXED_NOREPLACE | MAP_ANONYMOUS, 0, 0);
+  /* If mmap fails, that's because pcn_data has been mapped before
+     migration. */
+  lio_mmap ((void *)DL_PCN_STATE, PAGE_SIZE, PROT_READ | PROT_WRITE,
+           MAP_PRIVATE | MAP_FIXED_NOREPLACE | MAP_ANONYMOUS, 0, 0);
 
-  if (pcn_data == (void *)-1 || pcn_data == (void *) -EEXIST)
-    pcn_data = (void *) DL_PCN_STATE;
-
-  lio_printf ("arg = %p\n", pcn_data->arg);
+  rio_dbg_printf ("arg = %p\n", pcn_data->arg);
 
   _dl_rio_populate_dso_entries ();
 
@@ -498,7 +492,7 @@ main_function (int argc, char *argv[])
   //pcn_break ();
   lio_print ("reloading libc complete!\n");
 
-  lio_printf ("terminating\n");
+  rio_dbg_printf ("terminating\n");
   //spin ();
   //pcn_break ();
 
@@ -512,7 +506,7 @@ reload_segment (Elf64_Phdr *phdr, int seg, int prot, int fd, char *name)
   int filesz = phdr[seg].p_filesz;
   int offset = phdr[seg].p_offset;
   
-  lio_dbg_printf ("loading %s %lx @ %u bytes\n", name, paddr, filesz);
+  rio_dbg_printf ("loading %s %lx @ %u bytes\n", name, paddr, filesz);
 
   lio_mprotect (paddr, filesz, (PROT_READ | PROT_WRITE));
   lio_pread (fd, paddr, filesz, offset);

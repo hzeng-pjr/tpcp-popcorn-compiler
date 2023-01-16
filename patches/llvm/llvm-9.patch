@@ -1,3 +1,294 @@
+diff --git a/clang/examples/CMakeLists.txt b/clang/examples/CMakeLists.txt
+index e4fedf3682e8..9d3389d20e63 100644
+--- a/clang/examples/CMakeLists.txt
++++ b/clang/examples/CMakeLists.txt
+@@ -5,4 +5,5 @@ endif()
+ 
+ add_subdirectory(clang-interpreter)
+ add_subdirectory(PrintFunctionNames)
++add_subdirectory(PrintVariableSizes)
+ add_subdirectory(AnnotateFunctions)
+diff --git a/clang/examples/PrintFunctionNames/PrintFunctionNames.cpp b/clang/examples/PrintFunctionNames/PrintFunctionNames.cpp
+index e573ac93eb3e..ab5f9f0b5be1 100644
+--- a/clang/examples/PrintFunctionNames/PrintFunctionNames.cpp
++++ b/clang/examples/PrintFunctionNames/PrintFunctionNames.cpp
+@@ -9,6 +9,10 @@
+ // Example clang plugin which simply prints the names of all the top-level decls
+ // in the input file.
+ //
++// CJP: This plugin has been extended to print out all of the defined functions
++//      and global variables. It may be used to assist with analyzing how many
++//      such decls a source file contains.
++//
+ //===----------------------------------------------------------------------===//
+ 
+ #include "clang/Frontend/FrontendPluginRegistry.h"
+@@ -28,14 +32,31 @@ class PrintFunctionsConsumer : public ASTConsumer {
+ 
+ public:
+   PrintFunctionsConsumer(CompilerInstance &Instance,
+-                         std::set<std::string> ParsedTemplates)
++			 std::set<std::string> ParsedTemplates)
+       : Instance(Instance), ParsedTemplates(ParsedTemplates) {}
+ 
+   bool HandleTopLevelDecl(DeclGroupRef DG) override {
+     for (DeclGroupRef::iterator i = DG.begin(), e = DG.end(); i != e; ++i) {
+       const Decl *D = *i;
+-      if (const NamedDecl *ND = dyn_cast<NamedDecl>(D))
+-        llvm::errs() << "top-level-decl: \"" << ND->getNameAsString() << "\"\n";
++      if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(D)) {
++	if (!FD->isDefined())
++	  continue;
++	if (const NamedDecl *ND = dyn_cast<NamedDecl>(D))
++	  llvm::errs() << "Function: " << ND->getNameAsString() << "\n";
++      } else if (const VarDecl *VD = dyn_cast<VarDecl>(D)) {
++	if (VD->isLocalVarDecl())
++	  continue;
++	if (!VD->hasDefinition())
++	  continue;
++
++	auto TypeInfo = VD->getASTContext().getTypeInfo(VD->getType());
++
++	if (const NamedDecl *ND = dyn_cast<NamedDecl>(D))
++	  llvm::errs() << "Variable: " << ND->getNameAsString()
++		       << ", size = "
++		       << TypeInfo.Width / 8
++		       << "\n";
++      }
+     }
+ 
+     return true;
+@@ -55,12 +76,12 @@ public:
+     struct Visitor : public RecursiveASTVisitor<Visitor> {
+       const std::set<std::string> &ParsedTemplates;
+       Visitor(const std::set<std::string> &ParsedTemplates)
+-          : ParsedTemplates(ParsedTemplates) {}
++	  : ParsedTemplates(ParsedTemplates) {}
+       bool VisitFunctionDecl(FunctionDecl *FD) {
+-        if (FD->isLateTemplateParsed() &&
+-            ParsedTemplates.count(FD->getNameAsString()))
+-          LateParsedDecls.insert(FD);
+-        return true;
++	if (FD->isLateTemplateParsed() &&
++	    ParsedTemplates.count(FD->getNameAsString()))
++	  LateParsedDecls.insert(FD);
++	return true;
+       }
+ 
+       std::set<FunctionDecl*> LateParsedDecls;
+@@ -69,10 +90,10 @@ public:
+     clang::Sema &sema = Instance.getSema();
+     for (const FunctionDecl *FD : v.LateParsedDecls) {
+       clang::LateParsedTemplate &LPT =
+-          *sema.LateParsedTemplateMap.find(FD)->second;
++	  *sema.LateParsedTemplateMap.find(FD)->second;
+       sema.LateTemplateParser(sema.OpaqueParser, LPT);
+       llvm::errs() << "late-parsed-decl: \"" << FD->getNameAsString() << "\"\n";
+-    }   
++    }
+   }
+ };
+ 
+@@ -80,30 +101,30 @@ class PrintFunctionNamesAction : public PluginASTAction {
+   std::set<std::string> ParsedTemplates;
+ protected:
+   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
+-                                                 llvm::StringRef) override {
++						 llvm::StringRef) override {
+     return llvm::make_unique<PrintFunctionsConsumer>(CI, ParsedTemplates);
+   }
+ 
+   bool ParseArgs(const CompilerInstance &CI,
+-                 const std::vector<std::string> &args) override {
++		 const std::vector<std::string> &args) override {
+     for (unsigned i = 0, e = args.size(); i != e; ++i) {
+       llvm::errs() << "PrintFunctionNames arg = " << args[i] << "\n";
+ 
+       // Example error handling.
+       DiagnosticsEngine &D = CI.getDiagnostics();
+       if (args[i] == "-an-error") {
+-        unsigned DiagID = D.getCustomDiagID(DiagnosticsEngine::Error,
+-                                            "invalid argument '%0'");
+-        D.Report(DiagID) << args[i];
+-        return false;
++	unsigned DiagID = D.getCustomDiagID(DiagnosticsEngine::Error,
++					    "invalid argument '%0'");
++	D.Report(DiagID) << args[i];
++	return false;
+       } else if (args[i] == "-parse-template") {
+-        if (i + 1 >= e) {
+-          D.Report(D.getCustomDiagID(DiagnosticsEngine::Error,
+-                                     "missing -parse-template argument"));
+-          return false;
+-        }
+-        ++i;
+-        ParsedTemplates.insert(args[i]);
++	if (i + 1 >= e) {
++	  D.Report(D.getCustomDiagID(DiagnosticsEngine::Error,
++				     "missing -parse-template argument"));
++	  return false;
++	}
++	++i;
++	ParsedTemplates.insert(args[i]);
+       }
+     }
+     if (!args.empty() && args[0] == "help")
+diff --git a/clang/examples/PrintVariableSizes/CMakeLists.txt b/clang/examples/PrintVariableSizes/CMakeLists.txt
+new file mode 100644
+index 000000000000..d843e9897b37
+--- /dev/null
++++ b/clang/examples/PrintVariableSizes/CMakeLists.txt
+@@ -0,0 +1,23 @@
++# If we don't need RTTI or EH, there's no reason to export anything
++# from the plugin.
++if( NOT MSVC ) # MSVC mangles symbols differently, and
++               # PrintFunctionNames.export contains C++ symbols.
++  if( NOT LLVM_REQUIRES_RTTI )
++    if( NOT LLVM_REQUIRES_EH )
++      set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/PrintVariableSizes.exports)
++    endif()
++  endif()
++endif()
++
++add_llvm_library(PrintVariableSizes MODULE PrintVariableSizes.cpp PLUGIN_TOOL clang)
++
++if(LLVM_ENABLE_PLUGINS AND (WIN32 OR CYGWIN))
++  set(LLVM_LINK_COMPONENTS
++    Support
++  )
++  clang_target_link_libraries(PrintVariableSizes PRIVATE
++    clangAST
++    clangBasic
++    clangFrontend
++    )
++endif()
+diff --git a/clang/examples/PrintVariableSizes/PrintVariableSizes.cpp b/clang/examples/PrintVariableSizes/PrintVariableSizes.cpp
+new file mode 100644
+index 000000000000..ddd319b65906
+--- /dev/null
++++ b/clang/examples/PrintVariableSizes/PrintVariableSizes.cpp
+@@ -0,0 +1,96 @@
++//===- PrintVariableNames.cpp ---------------------------------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// Example clang plugin which simply prints the names of all the top-level decls
++// in the input file.
++//
++// CJP: This plugin has been extended to print out all of the defined functions
++//      and global variables. It may be used to assist with analyzing how many
++//      such decls a source file contains.
++//
++//===----------------------------------------------------------------------===//
++
++#include "clang/Frontend/FrontendPluginRegistry.h"
++#include "clang/AST/AST.h"
++#include "clang/AST/ASTConsumer.h"
++#include "clang/AST/RecursiveASTVisitor.h"
++#include "clang/Frontend/CompilerInstance.h"
++#include "clang/Sema/Sema.h"
++#include "llvm/Support/raw_ostream.h"
++using namespace clang;
++
++namespace {
++
++class PrintVariablesVisitor
++  : public RecursiveASTVisitor<PrintVariablesVisitor> {
++public:
++  explicit PrintVariablesVisitor(ASTContext *Context)
++    : Context(Context) {}
++
++  bool VisitTypeDecl(TypeDecl *Declaration) {
++    //Declaration->dump();
++    if (!Declaration->getTypeForDecl())
++      return true;
++
++    // Ignore built-in types like 'int [10]'
++    if (Declaration->getName() == "")
++      return true;
++
++    const Type *t = Declaration->getTypeForDecl ();
++
++    // Skip any forward declarations
++    if (t->isRecordType() && !t->getAsRecordDecl()->getDefinition())
++      return true;
++
++    auto TypeInfo = Context->getTypeInfo(t);
++
++    llvm::errs() << Declaration->getName()
++                 << ", size = "
++                 << TypeInfo.Width / 8
++                 << "\n";
++    return true;
++  }
++
++private:
++  ASTContext *Context;
++};
++
++class PrintVariablesConsumer : public clang::ASTConsumer {
++public:
++  explicit PrintVariablesConsumer(ASTContext *Context)
++    : Visitor(Context) {}
++
++  virtual void HandleTranslationUnit(clang::ASTContext &Context) {
++    Visitor.TraverseDecl(Context.getTranslationUnitDecl());
++  }
++private:
++  PrintVariablesVisitor Visitor;
++};
++
++class PrintVariableSizesAction : public PluginASTAction {
++  std::set<std::string> ParsedTemplates;
++protected:
++  std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
++						 llvm::StringRef) override {
++    return llvm::make_unique<PrintVariablesConsumer>(&CI.getASTContext());
++  }
++
++  bool ParseArgs(const CompilerInstance &CI,
++		 const std::vector<std::string> &args) override {
++    return true;
++  }
++
++  void PrintHelp(llvm::raw_ostream& ros) {
++    ros << "Help for PrintVariableSizes plugin goes here\n";
++  }
++};
++
++}
++
++static FrontendPluginRegistry::Add<PrintVariableSizesAction>
++X("print-vars", "print variable sizes");
+diff --git a/clang/examples/PrintVariableSizes/PrintVariableSizes.exports b/clang/examples/PrintVariableSizes/PrintVariableSizes.exports
+new file mode 100644
+index 000000000000..e69de29bb2d1
+diff --git a/clang/examples/PrintVariableSizes/README.txt b/clang/examples/PrintVariableSizes/README.txt
+new file mode 100644
+index 000000000000..23ab5f0b04fa
+--- /dev/null
++++ b/clang/examples/PrintVariableSizes/README.txt
+@@ -0,0 +1,16 @@
++This is a simple example demonstrating how to use clang's facility for
++providing AST consumers using a plugin.
++
++Build the plugin by running `make` in this directory.
++
++Once the plugin is built, you can run it using:
++--
++Linux:
++$ clang -cc1 -load ../../Debug+Asserts/lib/libPrintFunctionNames.so -plugin print-fns some-input-file.c
++$ clang -cc1 -load ../../Debug+Asserts/lib/libPrintFunctionNames.so -plugin print-fns -plugin-arg-print-fns help -plugin-arg-print-fns --example-argument some-input-file.c
++$ clang -cc1 -load ../../Debug+Asserts/lib/libPrintFunctionNames.so -plugin print-fns -plugin-arg-print-fns -an-error some-input-file.c
++
++Mac:
++$ clang -cc1 -load ../../Debug+Asserts/lib/libPrintFunctionNames.dylib -plugin print-fns some-input-file.c
++$ clang -cc1 -load ../../Debug+Asserts/lib/libPrintFunctionNames.dylib -plugin print-fns -plugin-arg-print-fns help -plugin-arg-print-fns --example-argument some-input-file.c
++$ clang -cc1 -load ../../Debug+Asserts/lib/libPrintFunctionNames.dylib -plugin print-fns -plugin-arg-print-fns -an-error some-input-file.c
 diff --git a/clang/include/clang/AST/ASTContext.h b/clang/include/clang/AST/ASTContext.h
 index 1d1aaf4fb115..9bd3a1add690 100644
 --- a/clang/include/clang/AST/ASTContext.h
@@ -6291,10 +6582,10 @@ index d9c97dff8c6e..bfb2210b6b01 100644
  #endif
 diff --git a/llvm/include/llvm/Analysis/PopcornUtil.h b/llvm/include/llvm/Analysis/PopcornUtil.h
 new file mode 100644
-index 000000000000..98da5b9ac493
+index 000000000000..f5aff1ef07c2
 --- /dev/null
 +++ b/llvm/include/llvm/Analysis/PopcornUtil.h
-@@ -0,0 +1,187 @@
+@@ -0,0 +1,151 @@
 +//===- LoopPaths.h - Enumerate paths in loops -------------------*- C++ -*-===//
 +//
 +//                     The LLVM Compiler Infrastructure
@@ -6322,8 +6613,6 @@ index 000000000000..98da5b9ac493
 +
 +#define POPCORN_META "popcorn"
 +#define POPCORN_MIGPOINT "migpoint"
-+#define POPCORN_HTM_BEGIN "htmbegin"
-+#define POPCORN_HTM_END "htmend"
 +
 +/// Add named metadata node with string operand to an instruction.
 +static inline void addMetadata(Instruction *I, StringRef name, StringRef op) {
@@ -6408,42 +6697,11 @@ index 000000000000..98da5b9ac493
 +  else return hasMetadata(I, POPCORN_META, POPCORN_MIGPOINT);
 +}
 +
-+/// Add metadata to an instruction marking it as an HTM begin point.
-+static inline void addHTMBeginMetadata(Instruction *I) {
-+  addMetadata(I, POPCORN_META, POPCORN_HTM_BEGIN);
-+}
-+
-+/// Remove metadata from an instruction marking it as an HTM begin point.
-+static inline void removeHTMBeginMetadata(Instruction *I) {
-+  removeMetadata(I, POPCORN_META, POPCORN_HTM_BEGIN);
-+}
-+
-+/// Return whether an instruction is an HTM begin point.
-+static inline bool isHTMBeginPoint(Instruction *I) {
-+  return hasMetadata(I, POPCORN_META, POPCORN_HTM_BEGIN);
-+}
-+
-+/// Add metadata to an instruction marking it as an HTM end point.
-+static inline void addHTMEndMetadata(Instruction *I) {
-+  addMetadata(I, POPCORN_META, POPCORN_HTM_END);
-+}
-+
-+/// Remove metadata from an instruction marking it as an HTM end point.
-+static inline void removeHTMEndMetadata(Instruction *I) {
-+  removeMetadata(I, POPCORN_META, POPCORN_HTM_END);
-+}
-+
-+/// Return whether an instruction is an HTM end point.
-+static inline bool isHTMEndPoint(Instruction *I) {
-+  return hasMetadata(I, POPCORN_META, POPCORN_HTM_END);
-+}
-+
 +#define POPCORN_INST_KEY "popcorn-inst-ty"
 +
 +/// Type of instrumentation.
 +enum InstrumentType {
-+  HTM = 0,
-+  Cycles,
++  Cycles = 1,
 +  None,
 +  NumVals // Don't use!
 +};
@@ -6452,9 +6710,6 @@ index 000000000000..98da5b9ac493
 +static inline void
 +setInstrumentationType(Module &M, enum InstrumentType Ty) {
 +  switch(Ty) {
-+  case HTM:
-+    M.addModuleFlag(Module::Error, POPCORN_INST_KEY, HTM);
-+    break;
 +  case Cycles:
 +    M.addModuleFlag(Module::Error, POPCORN_INST_KEY, Cycles);
 +    break;
@@ -6636,6 +6891,28 @@ index 60c13468542a..176de872b4fb 100644
  };
  
  //===--------------------------------------------------------------------===//
+diff --git a/llvm/include/llvm/CodeGen/MachineInstr.h b/llvm/include/llvm/CodeGen/MachineInstr.h
+index fa532ec831fd..7781eb587cb6 100644
+--- a/llvm/include/llvm/CodeGen/MachineInstr.h
++++ b/llvm/include/llvm/CodeGen/MachineInstr.h
+@@ -697,7 +697,7 @@ public:
+   /// block.  The TargetInstrInfo::AnalyzeBranch method can be used to get more
+   /// information about this branch.
+   bool isConditionalBranch(QueryType Type = AnyInBundle) const {
+-    return isBranch(Type) & !isBarrier(Type) & !isIndirectBranch(Type);
++    return isBranch(Type) && !isBarrier(Type) && !isIndirectBranch(Type);
+   }
+ 
+   /// Return true if this is a branch which always
+@@ -705,7 +705,7 @@ public:
+   /// TargetInstrInfo::AnalyzeBranch method can be used to get more information
+   /// about this branch.
+   bool isUnconditionalBranch(QueryType Type = AnyInBundle) const {
+-    return isBranch(Type) & isBarrier(Type) & !isIndirectBranch(Type);
++    return isBranch(Type) && isBarrier(Type) && !isIndirectBranch(Type);
+   }
+ 
+   /// Return true if this instruction has a predicate operand that
 diff --git a/llvm/include/llvm/CodeGen/Passes.h b/llvm/include/llvm/CodeGen/Passes.h
 index d92ee93268e7..01bc142484a0 100644
 --- a/llvm/include/llvm/CodeGen/Passes.h
@@ -7991,6 +8268,28 @@ index 675d179eb22a..d4f488430ec2 100644
        (void) llvm::createSeparateConstOffsetFromGEPPass();
        (void) llvm::createSpeculativeExecutionPass();
        (void) llvm::createSpeculativeExecutionIfHasBranchDivergencePass();
+diff --git a/llvm/include/llvm/MC/MCInstrDesc.h b/llvm/include/llvm/MC/MCInstrDesc.h
+index 0aa586dfc901..f49e58056828 100644
+--- a/llvm/include/llvm/MC/MCInstrDesc.h
++++ b/llvm/include/llvm/MC/MCInstrDesc.h
+@@ -285,7 +285,7 @@ public:
+   /// block.  The TargetInstrInfo::AnalyzeBranch method can be used to get more
+   /// information about this branch.
+   bool isConditionalBranch() const {
+-    return isBranch() & !isBarrier() & !isIndirectBranch();
++    return isBranch() && !isBarrier() && !isIndirectBranch();
+   }
+ 
+   /// Return true if this is a branch which always
+@@ -293,7 +293,7 @@ public:
+   /// TargetInstrInfo::AnalyzeBranch method can be used to get more information
+   /// about this branch.
+   bool isUnconditionalBranch() const {
+-    return isBranch() & isBarrier() & !isIndirectBranch();
++    return isBranch() && isBarrier() && !isIndirectBranch();
+   }
+ 
+   /// Return true if this is a branch or an instruction which directly
 diff --git a/llvm/include/llvm/MC/MCObjectFileInfo.h b/llvm/include/llvm/MC/MCObjectFileInfo.h
 index abc87bf27748..22b2c819251c 100644
 --- a/llvm/include/llvm/MC/MCObjectFileInfo.h
@@ -9596,10 +9895,10 @@ index 000000000000..398edb29055c
 +}
 diff --git a/llvm/lib/Analysis/SelectMigrationPoints.cpp b/llvm/lib/Analysis/SelectMigrationPoints.cpp
 new file mode 100644
-index 000000000000..808526a3a802
+index 000000000000..82e50e2485e8
 --- /dev/null
 +++ b/llvm/lib/Analysis/SelectMigrationPoints.cpp
-@@ -0,0 +1,1838 @@
+@@ -0,0 +1,1489 @@
 +//===- SelectMigrationPoints.cpp ------------------------------------------------===//
 +//
 +//                     The LLVM Compiler Infrastructure
@@ -9611,8 +9910,8 @@ index 000000000000..808526a3a802
 +//
 +// Select code locations to instrument with migration points, which are
 +// locations where threads make calls to invoke the migration process in
-+// addition to any other instrumentation (e.g., hardware transactional memory,
-+// HTM, stops & starts).  Migration points only occur at equivalence points, or
++// addition to any other instrumentation (e.g., stops & starts).
++// Migration points only occur at equivalence points, or
 +// locations in the program code where there is a direct mapping between
 +// architecture-specific execution state, like registers and stack, across
 +// different ISAs.  In our implementation, every function call site is an
@@ -9623,7 +9922,7 @@ index 000000000000..808526a3a802
 +//
 +// By default, the pass only inserts migration points at the beginning and end
 +// of a function.  More advanced analyses can be used to instrument function
-+// bodies (in particular, loops) with more migration points and HTM execution.
++// bodies (in particular, loops) with more migration points.
 +//
 +// More details about equivalence points can be found in the paper "A Unified
 +// Model of Pointwise Migration of Procedural Computations" by von Bank et. al
@@ -9677,7 +9976,7 @@ index 000000000000..808526a3a802
 +MaxItersPerMigPoint("max-iters-per-migpoint", cl::Hidden, cl::init(UINT32_MAX),
 +  cl::desc("Max iterations per migration point"));
 +
-+/// Percent of capacity (determined by analysis type, e.g., HTM buffer size) at
++/// Percent of capacity (determined by analysis type) at
 +/// which point weight objects will request a new migration point be inserted.
 +const static cl::opt<unsigned>
 +CapacityThreshold("cap-threshold", cl::Hidden, cl::init(80),
@@ -9723,49 +10022,11 @@ index 000000000000..808526a3a802
 +  cl::desc("Don't instrument a particular function with migration points"));
 +
 +/// Target cycles between migration points when instrumenting applications with
-+/// more migration points (but without HTM).  Allows tuning trade off between
-+/// migration point response time and overhead.
++/// more migration points.  Allows tuning trade off between migration point
++/// response time and overhead.
 +const static cl::opt<unsigned>
 +MillionCyclesBetweenMigPoints("migpoint-cycles", cl::Hidden, cl::init(50),
 +  cl::desc("Cycles between migration points, in millions of cycles"));
-+
-+/// Cover the application in transactional execution by inserting HTM
-+/// stop/start instructions at migration points.  Tailors the analysis to
-+/// reduce capacity aborts by estimating memory access behavior.
-+const static cl::opt<bool>
-+HTMExec("htm-execution", cl::NotHidden, cl::init(false),
-+  cl::desc("Instrument migration points with HTM execution "
-+           "(only supported on PowerPC 64-bit & x86-64)"));
-+
-+/// Disable wrapping mem<set, copy, move> instructions for which we don't know
-+/// the size.
-+const static cl::opt<bool>
-+NoWrapUnknownMem("htm-no-wrap-unknown-mem", cl::Hidden, cl::init(false),
-+  cl::desc("Disable wrapping mem<set, copy, move> of unknown size with HTM"));
-+
-+/// Disable wrapping libc functions which are likely to cause HTM aborts with
-+/// HTM stop/start intrinsics.  Wrapping happens by default with HTM execution.
-+const static cl::opt<bool>
-+NoWrapLibc("htm-no-wrap-libc", cl::Hidden, cl::init(false),
-+  cl::desc("Disable wrapping libc functions with HTM stop/start"));
-+
-+/// HTM memory read buffer size for tuning analysis when inserting additional
-+/// migration points.
-+const static cl::opt<unsigned>
-+HTMReadBufSizeArg("htm-buf-read", cl::Hidden, cl::init(32),
-+  cl::desc("HTM analysis tuning - HTM read buffer size, in kilobytes"),
-+  cl::value_desc("size"));
-+
-+/// HTM memory write buffer size for tuning analysis when inserting additional
-+/// migration points.
-+const static cl::opt<unsigned>
-+HTMWriteBufSizeArg("htm-buf-write", cl::Hidden, cl::init(8),
-+  cl::desc("HTM analysis tuning - HTM write buffer size, in kilobytes"),
-+  cl::value_desc("size"));
-+
-+#define KB 1024
-+#define HTMReadBufSize (HTMReadBufSizeArg * KB)
-+#define HTMWriteBufSize (HTMWriteBufSizeArg * KB)
 +
 +#define MILLION 1000000
 +#define CyclesBetweenMigPoints \
@@ -9796,7 +10057,7 @@ index 000000000000..808526a3a802
 +}
 +
 +/// Abstract weight metric.  Child classes implement for analyzing different
-+/// resource capacities, e.g., HTM buffer sizes.
++/// resource capacities.
 +class Weight {
 +protected:
 +  /// Number of times the weight was reset.
@@ -9811,7 +10072,6 @@ index 000000000000..808526a3a802
 +
 +  /// Expose types of child implementations.
 +  virtual bool isCycleWeight() const { return false; }
-+  virtual bool isHTMWeight() const { return false; }
 +
 +  /// Analyze an instruction & update accounting.
 +  virtual void analyze(const Instruction *I, const DataLayout *DL) = 0;
@@ -9850,169 +10110,6 @@ index 000000000000..808526a3a802
 +};
 +
 +typedef std::unique_ptr<Weight> WeightPtr;
-+
-+/// Weight metrics for HTM analysis, which basically depend on the number
-+/// of bytes loaded & stored.
-+class HTMWeight : public Weight {
-+private:
-+  // The number of bytes loaded & stored, respectively.
-+  size_t LoadBytes, StoreBytes;
-+
-+  // Statistics about when the weight was reset (i.e., at HTM stop/starts).
-+  size_t ResetLoad, ResetStore;
-+
-+public:
-+  HTMWeight(size_t LoadBytes = 0, size_t StoreBytes = 0)
-+    : LoadBytes(LoadBytes), StoreBytes(StoreBytes), ResetLoad(0),
-+      ResetStore(0) {}
-+  HTMWeight(const HTMWeight &C)
-+    : Weight(C), LoadBytes(C.LoadBytes), StoreBytes(C.StoreBytes),
-+      ResetLoad(C.ResetLoad), ResetStore(C.ResetStore) {}
-+  virtual Weight *copy() const { return new HTMWeight(*this); }
-+
-+  virtual bool isHTMWeight() const { return true; }
-+
-+  /// Analyze an instruction for memory operations.
-+  virtual void analyze(const Instruction *I, const DataLayout *DL) {
-+    Type *Ty;
-+
-+    // TODO do extractelement, insertelement, shufflevector, extractvalue, or
-+    // insertvalue read/write memory?
-+    // TODO Need to handle the following instructions/instrinsics (also see
-+    // Instruction::mayLoad() / Instruction::mayStore()):
-+    //   llvm.masked.load
-+    //   llvm.masked.store
-+    //   llvm.masked.gather
-+    //   llvm.masked.store
-+    switch(I->getOpcode()) {
-+    default: break;
-+    case Instruction::Load: {
-+      const LoadInst *LI = cast<LoadInst>(I);
-+      Ty = LI->getPointerOperand()->getType()->getPointerElementType();
-+      LoadBytes += DL->getTypeStoreSize(Ty);
-+      break;
-+    }
-+
-+    case Instruction::Store: {
-+      const StoreInst *SI = cast<StoreInst>(I);
-+      Ty = SI->getValueOperand()->getType();
-+      StoreBytes += DL->getTypeStoreSize(Ty);
-+      break;
-+    }
-+
-+    case Instruction::AtomicCmpXchg: {
-+      const AtomicCmpXchgInst *Cmp = cast<AtomicCmpXchgInst>(I);
-+      Ty = Cmp->getPointerOperand()->getType()->getPointerElementType();
-+      LoadBytes += DL->getTypeStoreSize(Ty);
-+      StoreBytes += DL->getTypeStoreSize(Ty);
-+      break;  // CJP: should this break or fall through?
-+    }
-+
-+    case Instruction::AtomicRMW: {
-+      const AtomicRMWInst *RMW = cast<AtomicRMWInst>(I);
-+      Ty = RMW->getPointerOperand()->getType()->getPointerElementType();
-+      LoadBytes += DL->getTypeStoreSize(Ty);
-+      StoreBytes += DL->getTypeStoreSize(Ty);
-+      break;  // CJP: should this break or fall through?
-+    }
-+
-+    case Instruction::Call: {
-+      const IntrinsicInst *II = dyn_cast<IntrinsicInst>(I);
-+      bool Loads = false, Stores = false;
-+      int64_t Size = 0;
-+
-+      if(!II) break;
-+      switch(II->getIntrinsicID()) {
-+      default: break;
-+      case Intrinsic::memcpy:
-+      case Intrinsic::memmove:
-+        // Arguments: i8* dest, i8* src, i<x> len, i32 align, i1 isvolatile
-+        Loads = Stores = true;
-+        Size = getValueSize(II->getArgOperand(2));
-+        break;
-+      case Intrinsic::memset:
-+        // Arguments: i8* dest, i8 val, i<x> len, i32 align, i1 isvolatile
-+        Stores = true;
-+        Size = getValueSize(II->getArgOperand(2));
-+        break;
-+      }
-+
-+      // Size > 0: we know the size statically
-+      // Size < 0: we can't determine the size statically
-+      // Size == 0: some intrinsic we don't care about
-+      if(Size > 0) {
-+        if(Loads) LoadBytes += Size;
-+        if(Stores) StoreBytes += Size;
-+      }
-+      else if(Size < 0) {
-+        // Assume we're doing heavy reading & writing -- may need to revise if
-+        // transaction begin/ends are too expensive.
-+        if(Loads) LoadBytes += HTMReadBufSize;
-+        if(Stores) StoreBytes += HTMWriteBufSize;
-+      }
-+
-+      break;
-+    }
-+    }
-+  }
-+
-+  virtual void reset() {
-+    Weight::reset();
-+    ResetLoad += LoadBytes;
-+    ResetStore += StoreBytes;
-+    LoadBytes = StoreBytes = 0;
-+  }
-+
-+  /// The max value for HTM weights is the max of the two weights' LoadBytes
-+  /// and StoreBytes (maintained separately).
-+  virtual void max(const Weight *RHS) {
-+    assert(RHS->isHTMWeight() && "Cannot mix weight types");
-+    const HTMWeight *W = (const HTMWeight *)RHS;
-+    if(W->LoadBytes > LoadBytes) LoadBytes = W->LoadBytes;
-+    if(W->StoreBytes > StoreBytes) StoreBytes = W->StoreBytes;
-+  }
-+
-+  virtual void multiply(size_t factor) {
-+    LoadBytes *= factor;
-+    StoreBytes *= factor;
-+  }
-+
-+  virtual void add(const Weight *RHS) {
-+    assert(RHS->isHTMWeight() && "Cannot mix weight types");
-+    const HTMWeight *W = (const HTMWeight *)RHS;
-+    LoadBytes += W->LoadBytes;
-+    StoreBytes += W->StoreBytes;
-+  }
-+
-+  /// The number of times this weight's load & stores could be executed without
-+  /// overflowing the capacity threshold of the HTM buffers.
-+  virtual size_t numIters(unsigned percent) const {
-+    size_t NumLoadIters = UINT64_MAX, NumStoreIters = UINT64_MAX,
-+      FPHtmReadSize = getValuePercent(HTMReadBufSize, percent),
-+      FPHtmWriteSize = getValuePercent(HTMWriteBufSize, percent);
-+
-+    if(!LoadBytes && !StoreBytes) return 1024; // Return a safe value
-+    else {
-+      if(LoadBytes) NumLoadIters = FPHtmReadSize / LoadBytes;
-+      if(StoreBytes) NumStoreIters = FPHtmWriteSize / StoreBytes;
-+
-+      if(!NumLoadIters && !NumStoreIters) return 1;
-+      else return NumLoadIters < NumStoreIters ? NumLoadIters : NumStoreIters;
-+    }
-+  }
-+
-+  virtual bool underPercentOfThreshold(unsigned percent) const {
-+    if(LoadBytes <= getValuePercent(HTMReadBufSize, percent) &&
-+       StoreBytes <= getValuePercent(HTMWriteBufSize, percent))
-+      return true;
-+    else return false;
-+  }
-+
-+  virtual std::string toString() const {
-+    return std::to_string(LoadBytes) + " byte(s) loaded, " +
-+           std::to_string(StoreBytes) + " byte(s) stored";
-+  }
-+};
 +
 +/// Weight metric for temporally-spaced migration points.
 +class CycleWeight : public Weight {
@@ -10167,8 +10264,7 @@ index 000000000000..808526a3a802
 +///
 +/// Note: returns a dynamically allocated object to be managed by the caller
 +static Weight *getZeroWeight() {
-+  if(HTMExec) return new HTMWeight();
-+  else return new CycleWeight();
++  return new CycleWeight();
 +}
 +
 +/// SelectMigrationPoints - select locations at which to insert migration
@@ -10231,8 +10327,7 @@ index 000000000000..808526a3a802
 +    DL = &M.getDataLayout();
 +    addPopcornFnAttributes(M);
 +    if(MoreMigPoints) parsePerFuncThresholds();
-+    if(HTMExec) Popcorn::setInstrumentationType(M, Popcorn::HTM);
-+    else Popcorn::setInstrumentationType(M, Popcorn::Cycles);
++    Popcorn::setInstrumentationType(M, Popcorn::Cycles);
 +    return false;
 +  }
 +
@@ -10246,16 +10341,6 @@ index 000000000000..808526a3a802
 +       NoInstFuncs.find(F.getName()) != NoInstFuncs.end()) return false;
 +
 +    initializeAnalysis(F);
-+
-+    // Some operations (e.g., big memory copies, I/O) will cause aborts.
-+    // Instrument these operations to stop & resume transactions afterwards.
-+    if(HTMExec) {
-+      bool AddedMigPoint = wrapWithHTM(F, isBigMemoryOp,
-+        "memory operations that overflow HTM buffers");
-+      if(!NoWrapLibc)
-+        AddedMigPoint |= wrapWithHTM(F, isLibcIO, "I/O functions");
-+      if(AddedMigPoint) LP->runOnFunction(F);
-+    }
 +
 +    if(MoreMigPoints && !LP->analysisFailed()) {
 +      StringRef FuncName = F.getName();
@@ -10278,14 +10363,7 @@ index 000000000000..808526a3a802
 +               << "\nMaximum iterations/migration point: "
 +               << std::to_string(MaxItersPerMigPoint);
 +
-+        if(HTMExec)
-+          dbgs() << "\nAnalyzing for HTM Instrumentation"
-+                 << "\n  HTM read buffer size: "
-+                 << std::to_string(HTMReadBufSizeArg) << "kb"
-+                 << "\n  HTM write buffer size: "
-+                 << std::to_string(HTMWriteBufSizeArg) << "kb\n";
-+        else
-+          dbgs() << "\nAnalyzing for migration call out instrumentation"
++        dbgs()   << "\nAnalyzing for migration call out instrumentation"
 +                 << "\n  Target millions of cycles between migration points: "
 +                 << std::to_string(MillionCyclesBetweenMigPoints) << "\n";
 +      );
@@ -10304,7 +10382,7 @@ index 000000000000..808526a3a802
 +
 +      if(MarkStart) {
 +        LLVM_DEBUG(dbgs() << "-> Marking function entry as a migration point <-\n");
-+        markAsMigPoint(&*F.getEntryBlock().getFirstInsertionPt(), true, true);
++        markAsMigPoint(&*F.getEntryBlock().getFirstInsertionPt());
 +      }
 +      else { LLVM_DEBUG(dbgs() << "-> Eliding instrumenting function entry <-\n"); }
 +    }
@@ -10318,13 +10396,13 @@ index 000000000000..808526a3a802
 +      }
 +
 +      LLVM_DEBUG(dbgs() << "-> Marking function entry as a migration point <-\n");
-+      markAsMigPoint(&*F.getEntryBlock().getFirstInsertionPt(), true, true);
++      markAsMigPoint(&*F.getEntryBlock().getFirstInsertionPt());
 +
 +      // Instrument function exit point(s)
 +      LLVM_DEBUG(dbgs() << "-> Marking function exit(s) as a migration point <-\n");
 +      for(Function::iterator BB = F.begin(), E = F.end(); BB != E; BB++)
 +        if(isa<ReturnInst>(BB->getTerminator()))
-+          markAsMigPoint(BB->getTerminator(), true, true);
++          markAsMigPoint(BB->getTerminator());
 +    }
 +
 +    // Finally, apply transformations to loops headers according to analysis.
@@ -10342,8 +10420,6 @@ index 000000000000..808526a3a802
 +    LoopWeights.clear();
 +    TransformLoops.clear();
 +    MigPointInsts.clear();
-+    HTMBeginInsts.clear();
-+    HTMEndInsts.clear();
 +  }
 +
 +private:
@@ -10356,7 +10432,7 @@ index 000000000000..808526a3a802
 +  unsigned CurStartThresh;
 +  unsigned CurRetThresh;
 +
-+  /// The current architecture - used to access architecture-specific HTM calls
++  /// The current architecture - used to access architecture-specific cache sizes
 +  const DataLayout *DL;
 +
 +  /// Parsed per-function thresholds.
@@ -10369,9 +10445,6 @@ index 000000000000..808526a3a802
 +  ScalarEvolutionWrapperPass *SE;
 +  LoopInfo *LI;
 +  EnumerateLoopPaths *LP;
-+
-+  /// libc functions which are likely to cause an HTM abort through a syscall
-+  const static StringSet<> LibcIO;
 +
 +  /// Weight information for basic blocks.
 +  class BasicBlockWeightInfo {
@@ -10588,8 +10661,6 @@ index 000000000000..808526a3a802
 +  /// Code locations marked for instrumentation.
 +  SmallPtrSet<Loop *, 16> TransformLoops;
 +  SmallPtrSet<Instruction *, 32> MigPointInsts;
-+  SmallPtrSet<Instruction *, 32> HTMBeginInsts;
-+  SmallPtrSet<Instruction *, 32> HTMEndInsts;
 +
 +  //===--------------------------------------------------------------------===//
 +  // Analysis implementation
@@ -10614,18 +10685,6 @@ index 000000000000..808526a3a802
 +    }
 +  }
 +
-+  /// Return whether the instruction requires HTM begin instrumentation.
-+  bool shouldAddHTMBegin(Instruction *I) const {
-+    if(Popcorn::isHTMBeginPoint(I)) return true;
-+    else return HTMBeginInsts.count(I);
-+  }
-+
-+  /// Return whether the instruction requires HTM end instrumentation.
-+  bool shouldAddHTMEnd(Instruction *I) const {
-+    if(Popcorn::isHTMEndPoint(I)) return true;
-+    else return HTMEndInsts.count(I);
-+  }
-+
 +  /// Return whether the instruction is a migration point.  We assume that all
 +  /// called functions have migration points internally.
 +  bool isMigrationPoint(Instruction *I) const {
@@ -10635,113 +10694,23 @@ index 000000000000..808526a3a802
 +
 +  /// Return whether the instruction is marked for any instrumentation.
 +  bool isMarkedForInstrumentation(Instruction *I) const {
-+    return isMigrationPoint(I) || shouldAddHTMBegin(I) || shouldAddHTMEnd(I);
-+  }
-+
-+  /// Mark an instruction to be instrumented with an HTM begin, directly before
-+  /// the instruction
-+  bool markAsHTMBegin(Instruction *I) {
-+    if(!HTMExec) return false;
-+    LLVM_DEBUG(dbgs() << "  + Marking"; I->print(dbgs());
-+          dbgs() << " as HTM begin\n");
-+    HTMBeginInsts.insert(I);
-+    Popcorn::addHTMBeginMetadata(I);
-+    return true;
-+  }
-+
-+  /// Mark an instruction to be instrumented with an HTM end, directly before
-+  /// the instruction
-+  bool markAsHTMEnd(Instruction *I) {
-+    if(!HTMExec) return false;
-+    LLVM_DEBUG(dbgs() << "  + Marking"; I->print(dbgs());
-+          dbgs() << " as HTM end\n");
-+    HTMEndInsts.insert(I);
-+    Popcorn::addHTMEndMetadata(I);
-+    return true;
++    return isMigrationPoint(I);
 +  }
 +
 +  /// Mark an instruction to be instrumented with a migration point, directly
-+  /// before the instruction.  Optionally mark instruction as needing HTM
-+  /// start/stop intrinsics.
-+  bool markAsMigPoint(Instruction *I, bool AddHTMBegin, bool AddHTMEnd) {
++  /// before the instruction.
++  bool markAsMigPoint(Instruction *I) {
 +    // Don't clobber any existing instrumentation
 +    if(isMarkedForInstrumentation(I)) return false;
 +    LLVM_DEBUG(dbgs() << "  + Marking"; I->print(dbgs());
 +          dbgs() << " as a migration point\n");
 +    MigPointInsts.insert(I);
 +    Popcorn::addEquivalencePointMetadata(I);
-+    if(AddHTMBegin) markAsHTMBegin(I);
-+    if(AddHTMEnd) markAsHTMEnd(I);
 +    return true;
 +  }
 +
 +  /// Instruction matching function type.
 +  typedef bool (*InstMatch)(const Instruction *, unsigned Thresh);
-+
-+  /// Return whether the instruction is a memory operation that will overflow
-+  /// HTM buffers.
-+  static bool isBigMemoryOp(const Instruction *I, unsigned Thresh) {
-+    if(!I || !isa<IntrinsicInst>(I)) return false;
-+    const IntrinsicInst *II = cast<IntrinsicInst>(I);
-+    int64_t Size = 0;
-+    switch(II->getIntrinsicID()) {
-+    default: return false;
-+    case Intrinsic::memcpy: case Intrinsic::memmove: case Intrinsic::memset:
-+      // Arguments: i8* dest, i8* src, i<x> len, i32 align, i1 isvolatile
-+      Size = getValueSize(II->getArgOperand(2));
-+      break;
-+    }
-+
-+    if(Size >= 0) { // We know the size
-+      size_t USize = (size_t)Size;
-+      return USize >= getValuePercent(HTMReadBufSize, Thresh) ||
-+             USize >= getValuePercent(HTMWriteBufSize, Thresh);
-+    }
-+    else return !NoWrapUnknownMem;
-+  }
-+
-+  /// Return whether the instruction is a libc I/O call.
-+  static bool isLibcIO(const Instruction *I, unsigned Thresh) {
-+    if(!I || !Popcorn::isCallSite(I)) return false;
-+    const ImmutableCallSite CS(I);
-+    const Function *CalledFunc = CS.getCalledFunction();
-+    if(CalledFunc && CalledFunc->hasName())
-+      return LibcIO.find(CalledFunc->getName()) != LibcIO.end();
-+    return false;
-+  }
-+
-+  /// Search for & wrap operations that match a certain criteria.
-+  bool wrapWithHTM(Function &F, InstMatch Matcher, const char *Desc) {
-+    bool AddedMigPoint = false;
-+
-+    LLVM_DEBUG(dbgs() << "\n-> Wrapping " << Desc << " with HTM stop/start <-\n");
-+    for(Function::iterator BB = F.begin(), BE = F.end(); BB != BE; BB++) {
-+      if(LI->getLoopFor(&*BB)) continue; // Don't do this in loops!
-+      for(BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; I++) {
-+        if(Matcher(&*I, CurCapThresh)) {
-+          markAsHTMEnd(&*I);
-+
-+          // Search subsequent instructions for other libc calls to prevent
-+          // pathological transaction stop/starts.
-+          const static size_t searchSpan = 10;
-+          BasicBlock::iterator NextI(I->getNextNode());
-+          for(size_t rem = searchSpan; rem > 0 && NextI != E; rem--, NextI++) {
-+            if(Matcher(&*NextI, CurCapThresh)) {
-+              LLVM_DEBUG(dbgs() << "  - Found another match:"; NextI->dump());
-+              I = NextI;
-+              rem = searchSpan;
-+            }
-+          }
-+
-+          // TODO analyze successor blocks as well
-+
-+          AddedMigPoint |= markAsMigPoint(I->getNextNode(), true, false);
-+        }
-+      }
-+    }
-+
-+    return AddedMigPoint;
-+  }
 +
 +  /// Get the starting weight for a basic block based on the max weights of its
 +  /// predecessors.
@@ -10798,8 +10767,6 @@ index 000000000000..808526a3a802
 +      dbgs() << "\n";
 +    );
 +
-+    // TODO this doesn't respect spans identified by wrapWithHTM()!
-+
 +    for(BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; I++) {
 +      if(isa<PHINode>(I)) continue;
 +
@@ -10808,7 +10775,7 @@ index 000000000000..808526a3a802
 +      // internally avoids tampering with existing instrumentation.
 +      if(isMigrationPoint(&*I)) CurWeight->reset();
 +      else if(CurWeight->shouldAddMigPoint(CurCapThresh)) {
-+        AddedMigPoint |= markAsMigPoint(&*I, true, true);
++        AddedMigPoint |= markAsMigPoint(&*I);
 +        CurWeight->reset();
 +      }
 +
@@ -10842,7 +10809,7 @@ index 000000000000..808526a3a802
 +        //     ...
 +        const Loop *PredL = LI->getLoopFor(Pred);
 +        if(PredL == nullptr || (PredL->getLoopDepth() < L->getLoopDepth()))
-+          AddedMigPoint |= markAsMigPoint(Pred->getTerminator(), true, true);
++          AddedMigPoint |= markAsMigPoint(Pred->getTerminator());
 +      }
 +    }
 +    return AddedMigPoint;
@@ -11250,7 +11217,7 @@ index 000000000000..808526a3a802
 +        const BasicBlockWeightInfo &BBWI = BBWeights[&*BB].BlockWeight;
 +        if(!BBWI.BlockWeight->underPercentOfThreshold(CurRetThresh)) {
 +          LLVM_DEBUG(dbgs() << " - Not under weight threshold, marking return\n");
-+          markAsMigPoint(BB->getTerminator(), true, true);
++          markAsMigPoint(BB->getTerminator());
 +        }
 +      }
 +    }
@@ -11370,7 +11337,7 @@ index 000000000000..808526a3a802
 +        "l.migpoint" + std::to_string(LoopsTransformed), CurF, NewSuccBB);
 +      IRBuilder<> MigPointWorker(MigPointBB);
 +      Instruction *Br = cast<Instruction>(MigPointWorker.CreateBr(NewSuccBB));
-+      markAsMigPoint(Br, true, true);
++      markAsMigPoint(Br);
 +
 +      // Add check and branch to migration point only every nth iteration.
 +      // Round down to nearest power-of-2, which allows us to use a simple
@@ -11391,11 +11358,11 @@ index 000000000000..808526a3a802
 +    }
 +    else {
 +      LLVM_DEBUG(dbgs() << "Instrumenting to hit migration point every iteration\n");
-+      markAsMigPoint(&*Header->getFirstInsertionPt(), true, true);
++      markAsMigPoint(&*Header->getFirstInsertionPt());
 +    }
 +  }
 +
-+  /// Insert migration points & HTM instrumentation for instructions.
++  /// Insert migration points for instructions.
 +  void transformLoopHeaders(Function &F) {
 +    LLVM_DEBUG(dbgs() << "\n-> Transforming loop headers <-\n");
 +    for(auto Loop : TransformLoops) {
@@ -11416,23 +11383,6 @@ index 000000000000..808526a3a802
 +INITIALIZE_PASS_DEPENDENCY(ScalarEvolutionWrapperPass)
 +INITIALIZE_PASS_END(SelectMigrationPoints, "select-migration-points",
 +                    "Select migration points locations", true, false)
-+
-+const StringSet<> SelectMigrationPoints::LibcIO = {
-+  "fopen", "freopen", "fclose", "fflush", "fwide",
-+  "setbuf", "setvbuf", "fread", "fwrite",
-+  "fgetc", "getc", "fgets", "fputc", "putc", "fputs",
-+  "getchar", "gets", "putchar", "puts", "ungetc",
-+  "fgetwc", "getwc", "fgetws", "fputwc", "putwc", "fputws",
-+  "getwchar", "putwchar", "ungetwc",
-+  "scanf", "fscanf", "vscanf", "vfscanf",
-+  "printf", "fprintf", "vprintf", "vfprintf",
-+  "wscanf", "fwscanf", "vwscanf", "vfwscanf",
-+  "wprintf", "fwprintf", "vwprintf", "vfwprintf",
-+  "ftell", "fgetpos", "fseek", "fsetpos", "rewind",
-+  "clearerr", "feof", "ferror", "perror",
-+  "remove", "rename", "tmpfile", "tmpnam",
-+  "__isoc99_fscanf", "exit"
-+};
 +
 +namespace llvm {
 +  FunctionPass *createSelectMigrationPointsPass()
@@ -11895,10 +11845,18 @@ index 2ffa5e389f89..f921952f6f8c 100644
                      << "********** Function: " << MF.getName() << '\n');
    MRI = &MF.getRegInfo();
 diff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp
-index 15ac45c37c66..e0c22362f5f2 100644
+index 15ac45c37c66..f24e6b4e5f62 100644
 --- a/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp
 +++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp
-@@ -1161,6 +1161,9 @@ bool DAGTypeLegalizer::PromoteIntegerOperand(SDNode *N, unsigned OpNo) {
+@@ -22,6 +22,7 @@
+ #include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/KnownBits.h"
+ #include "llvm/Support/raw_ostream.h"
++#include "llvm/CodeGen/StackMaps.h"
+ using namespace llvm;
+ 
+ #define DEBUG_TYPE "legalize-types"
+@@ -1161,6 +1162,9 @@ bool DAGTypeLegalizer::PromoteIntegerOperand(SDNode *N, unsigned OpNo) {
    case ISD::VECREDUCE_SMIN:
    case ISD::VECREDUCE_UMAX:
    case ISD::VECREDUCE_UMIN: Res = PromoteIntOp_VECREDUCE(N); break;
@@ -11908,38 +11866,23 @@ index 15ac45c37c66..e0c22362f5f2 100644
    }
  
    // If the result is null, the sub-method took care of registering results etc.
-@@ -1397,6 +1400,30 @@ SDValue DAGTypeLegalizer::PromoteIntOp_SINT_TO_FP(SDNode *N) {
+@@ -1397,6 +1401,15 @@ SDValue DAGTypeLegalizer::PromoteIntOp_SINT_TO_FP(SDNode *N) {
                                  SExtPromotedInteger(N->getOperand(0))), 0);
  }
  
 +SDValue DAGTypeLegalizer::PromoteIntOp_STACKMAP(SDNode *N, unsigned OpNo) {
-+  std::vector<SDValue> Ops(N->getNumOperands());
-+  SDLoc dl(N);
-+
-+  for(unsigned i = 0; i < N->getNumOperands(); i++) {
-+    if(i == OpNo) {
-+      EVT NVT = TLI.getTypeToTransformTo(*DAG.getContext(),
-+					 N->getOperand(OpNo)->getValueType(0));
-+      if(N->getOperand(i).getValueType() == MVT::i1 ||
-+         N->getOperand(i).getValueType() == MVT::i8 ||
-+         N->getOperand(i).getValueType() == MVT::i16 ||
-+	 N->getOperand(i).getValueType() == MVT::i32) {
-+        if(N->getOperand(i).getOpcode() == ISD::TRUNCATE)
-+          Ops[i] = N->getOperand(i)->getOperand(0);
-+        else
-+          Ops[i] = DAG.getNode(ISD::ZERO_EXTEND, dl, NVT, N->getOperand(i));
-+      }
-+    }
-+    else Ops[i] = N->getOperand(i);
-+  }
-+
-+  return SDValue(DAG.UpdateNodeOperands(N, Ops), 0);
++  assert(OpNo > 1); // Because the first two arguments are guaranteed legal.
++  SmallVector<SDValue, 10> NewOps(N->ops().begin(), N->ops().end());
++  SDValue Operand = N->getOperand(OpNo);
++  EVT NVT = TLI.getTypeToTransformTo(*DAG.getContext(), Operand.getValueType());
++  NewOps[OpNo] = DAG.getNode(ISD::ANY_EXTEND, SDLoc(N), NVT, Operand);
++  return SDValue(DAG.UpdateNodeOperands(N, NewOps), 0);
 +}
 +
  SDValue DAGTypeLegalizer::PromoteIntOp_STORE(StoreSDNode *N, unsigned OpNo){
    assert(ISD::isUNINDEXEDStore(N) && "Indexed store during type legalization!");
    SDValue Ch = N->getChain(), Ptr = N->getBasePtr();
-@@ -3499,6 +3526,9 @@ bool DAGTypeLegalizer::ExpandIntegerOperand(SDNode *N, unsigned OpNo) {
+@@ -3499,6 +3512,9 @@ bool DAGTypeLegalizer::ExpandIntegerOperand(SDNode *N, unsigned OpNo) {
    case ISD::FRAMEADDR:         Res = ExpandIntOp_RETURNADDR(N); break;
  
    case ISD::ATOMIC_STORE:      Res = ExpandIntOp_ATOMIC_STORE(N); break;
@@ -11949,39 +11892,47 @@ index 15ac45c37c66..e0c22362f5f2 100644
    }
  
    // If the result is null, the sub-method took care of registering results etc.
-@@ -3937,6 +3967,36 @@ SDValue DAGTypeLegalizer::ExpandIntOp_ATOMIC_STORE(SDNode *N) {
+@@ -3937,6 +3953,44 @@ SDValue DAGTypeLegalizer::ExpandIntOp_ATOMIC_STORE(SDNode *N) {
    return Swap.getValue(1);
  }
  
 +SDValue DAGTypeLegalizer::ExpandIntOp_STACKMAP(SDNode *N, unsigned OpNo) {
-+  std::vector<SDValue> Ops;
-+  SDLoc dl(N);
-+  const SDValue &InvOp = N->getOperand(OpNo);
++  assert(OpNo > 1);
++  SDValue Op = N->getOperand(OpNo);
 +
-+  switch(InvOp.getSimpleValueType().SimpleTy) {
-+  default: llvm_unreachable("Unhandled operand type in stackmap");
-+  case MVT::i128:
-+    if(InvOp->getOpcode() == ISD::BUILD_PAIR) {
-+      // If the i128 is the result of a buildpair i64, i64, replace the i128
-+      // operand with the two i64 operands in the stackmap
-+      LLVM_DEBUG(dbgs() << "Stackmap: replacing i128 operand with i64 pair\n");
++  // FIXME: Non-constant operands are not yet handled:
++  //  - https://github.com/llvm/llvm-project/issues/26431
++  //  - https://github.com/llvm/llvm-project/issues/55957
++  ConstantSDNode *CN = dyn_cast<ConstantSDNode>(Op);
++  if (!CN)
++    return SDValue();
 +
-+      Ops.reserve(N->getNumOperands() + 1);
-+      for(unsigned i = 0; i < N->getNumOperands(); i++) {
-+        if(i == OpNo) {
-+          Ops.push_back(InvOp->getOperand(0));
-+          Ops.push_back(InvOp->getOperand(1));
-+        }
-+        else Ops.push_back(N->getOperand(i));
-+      }
++  // Copy operands before the one being expanded.
++  SmallVector<SDValue, 10> NewOps;
++  for (unsigned I = 0; I < OpNo; I++)
++    NewOps.push_back(N->getOperand(I));
 +
-+      int64_t SMID = cast<ConstantSDNode>(N->getOperand(0))->getSExtValue();
-+      DAG.getMachineFunction().addOpLegalizeChange(SMID, OpNo, 2);
-+    }
-+    break;
++  EVT Ty = Op.getValueType();
++  SDLoc DL = SDLoc(N);
++  if (CN->getConstantIntValue()->getValue().getActiveBits() < 64) {
++    NewOps.push_back(
++        DAG.getTargetConstant(StackMaps::ConstantOp, DL, MVT::i64));
++    NewOps.push_back(DAG.getTargetConstant(CN->getZExtValue(), DL, Ty));
++  } else {
++    // FIXME: https://github.com/llvm/llvm-project/issues/55609
++    return SDValue();
 +  }
 +
-+  return SDValue(DAG.MorphNodeTo(N, N->getOpcode(), N->getVTList(), Ops), 0);
++  // Copy remaining operands.
++  for (unsigned I = OpNo + 1; I < N->getNumOperands(); I++)
++    NewOps.push_back(N->getOperand(I));
++
++  SDValue NewNode = DAG.getNode(N->getOpcode(), DL, N->getVTList(), NewOps);
++
++  for (unsigned ResNum = 0; ResNum < N->getNumValues(); ResNum++)
++    ReplaceValueWith(SDValue(N, ResNum), NewNode.getValue(ResNum));
++
++  return SDValue(); // Signal that we have replaced the node already.
 +}
  
  SDValue DAGTypeLegalizer::PromoteIntRes_EXTRACT_SUBVECTOR(SDNode *N) {
@@ -12114,7 +12065,7 @@ index 4120a401b696..a042c9cdfac8 100644
    DAG.setRoot(Chain);
  
 diff --git a/llvm/lib/CodeGen/StackMaps.cpp b/llvm/lib/CodeGen/StackMaps.cpp
-index ae9401b89700..41adb7a5bc07 100644
+index ae9401b89700..9f092d746b53 100644
 --- a/llvm/lib/CodeGen/StackMaps.cpp
 +++ b/llvm/lib/CodeGen/StackMaps.cpp
 @@ -15,15 +15,20 @@
@@ -12304,8 +12255,8 @@ index ae9401b89700..41adb7a5bc07 100644
      case StackMaps::DirectMemRefOp: {
        auto &DL = AP.MF->getDataLayout();
  
-+      assert((isAlloca || isTemporary) &&
-+             "Did not find alloca value for direct memory reference");
++      //assert((isAlloca || isTemporary) &&
++      //       "Did not find alloca value for direct memory reference");
        unsigned Size = DL.getPointerSizeInBits();
        assert((Size % 8) == 0 && "Need pointer size in bytes.");
        Size /= 8;
@@ -12721,7 +12672,7 @@ index ae9401b89700..41adb7a5bc07 100644
  
    // Move large constants into the constant pool.
    for (auto &Loc : Locations) {
-@@ -339,25 +751,37 @@ void StackMaps::recordStackMapOpers(const MachineInstr &MI, uint64_t ID,
+@@ -339,25 +751,41 @@ void StackMaps::recordStackMapOpers(const MachineInstr &MI, uint64_t ID,
  
    // Create an expression to calculate the offset of the callsite from function
    // entry.
@@ -12736,9 +12687,13 @@ index ae9401b89700..41adb7a5bc07 100644
 +  // register allocator may insert temporary registers and copy
 +  // instructions to satisfy the values used in the stack map.
 +  const MachineInstr *call = MI.getPrevNode();
-+  while (!call->isCall())
++  while (call != nullptr && !call->isCall())
 +    call = call->getPrevNode();
 +  
++  // LLVM might remove an unused function call.
++  if (call == nullptr)
++    return;
++
 +  int RAOffset = AP.getCanonicalReturnAddr(call);
 +  const MCExpr *RAFixup = MCBinaryExpr::createSub(
        MCSymbolRefExpr::create(MILabel, OutContext),
@@ -12770,7 +12725,7 @@ index ae9401b89700..41adb7a5bc07 100644
  }
  
  void StackMaps::recordStackMap(const MachineInstr &MI) {
-@@ -404,7 +828,7 @@ void StackMaps::recordStatepoint(const MachineInstr &MI) {
+@@ -404,7 +832,7 @@ void StackMaps::recordStatepoint(const MachineInstr &MI) {
  /// Emit the stackmap header.
  ///
  /// Header {
@@ -12779,7 +12734,7 @@ index ae9401b89700..41adb7a5bc07 100644
  ///   uint8  : Reserved (expected to be 0)
  ///   uint16 : Reserved (expected to be 0)
  /// }
-@@ -418,8 +842,8 @@ void StackMaps::emitStackmapHeader(MCStreamer &OS) {
+@@ -418,8 +846,8 @@ void StackMaps::emitStackmapHeader(MCStreamer &OS) {
    OS.EmitIntValue(0, 2);               // Reserved.
  
    // Num functions.
@@ -12790,7 +12745,7 @@ index ae9401b89700..41adb7a5bc07 100644
    // Num constants.
    LLVM_DEBUG(dbgs() << WSMP << "#constants = " << ConstPool.size() << '\n');
    OS.EmitIntValue(ConstPool.size(), 4);
-@@ -433,18 +857,27 @@ void StackMaps::emitStackmapHeader(MCStreamer &OS) {
+@@ -433,18 +861,27 @@ void StackMaps::emitStackmapHeader(MCStreamer &OS) {
  /// StkSizeRecord[NumFunctions] {
  ///   uint64 : Function Address
  ///   uint64 : Stack Size
@@ -12825,7 +12780,7 @@ index ae9401b89700..41adb7a5bc07 100644
    }
  }
  
-@@ -464,14 +897,20 @@ void StackMaps::emitConstantPoolEntries(MCStreamer &OS) {
+@@ -464,14 +901,20 @@ void StackMaps::emitConstantPoolEntries(MCStreamer &OS) {
  ///
  /// StkMapRecord[NumRecords] {
  ///   uint64 : PatchPoint ID
@@ -12850,7 +12805,7 @@ index ae9401b89700..41adb7a5bc07 100644
  ///   }
  ///   uint16 : Padding
  ///   uint16 : NumLiveOuts
-@@ -480,6 +919,25 @@ void StackMaps::emitConstantPoolEntries(MCStreamer &OS) {
+@@ -480,6 +923,25 @@ void StackMaps::emitConstantPoolEntries(MCStreamer &OS) {
  ///     uint8  : Reserved
  ///     uint8  : Size in Bytes
  ///   }
@@ -12876,7 +12831,7 @@ index ae9401b89700..41adb7a5bc07 100644
  ///   uint32 : Padding (only if required to align to 8 byte)
  /// }
  ///
-@@ -495,23 +953,29 @@ void StackMaps::emitCallsiteEntries(MCStreamer &OS) {
+@@ -495,23 +957,29 @@ void StackMaps::emitCallsiteEntries(MCStreamer &OS) {
    for (const auto &CSI : CSInfos) {
      const LocationVec &CSLocs = CSI.Locations;
      const LiveOutVec &LiveOuts = CSI.LiveOuts;
@@ -12907,7 +12862,7 @@ index ae9401b89700..41adb7a5bc07 100644
      OS.EmitValue(CSI.CSOffsetExpr, 4);
  
      // Reserved for flags.
-@@ -519,17 +983,16 @@ void StackMaps::emitCallsiteEntries(MCStreamer &OS) {
+@@ -519,17 +987,16 @@ void StackMaps::emitCallsiteEntries(MCStreamer &OS) {
      OS.EmitIntValue(CSLocs.size(), 2);
  
      for (const auto &Loc : CSLocs) {
@@ -12931,7 +12886,7 @@ index ae9401b89700..41adb7a5bc07 100644
      // Num live-out registers and padding to align to 4 byte.
      OS.EmitIntValue(0, 2);
      OS.EmitIntValue(LiveOuts.size(), 2);
-@@ -539,18 +1002,43 @@ void StackMaps::emitCallsiteEntries(MCStreamer &OS) {
+@@ -539,18 +1006,43 @@ void StackMaps::emitCallsiteEntries(MCStreamer &OS) {
        OS.EmitIntValue(0, 1);
        OS.EmitIntValue(LO.Size, 1);
      }
@@ -12977,7 +12932,7 @@ index ae9401b89700..41adb7a5bc07 100644
           "Expected empty function record too!");
    if (CSInfos.empty())
      return;
-@@ -569,7 +1057,7 @@ void StackMaps::serializeToStackMapSection() {
+@@ -569,7 +1061,7 @@ void StackMaps::serializeToStackMapSection() {
    // Serialize data.
    LLVM_DEBUG(dbgs() << "********** Stack Map Output **********\n");
    emitStackmapHeader(OS);
@@ -16760,10 +16715,10 @@ index 78b697f7f940..228029a8e716 100644
    PoisonChecking.cpp
 diff --git a/llvm/lib/Transforms/Instrumentation/InsertStackMaps.cpp b/llvm/lib/Transforms/Instrumentation/InsertStackMaps.cpp
 new file mode 100644
-index 000000000000..4ddd7cac63ef
+index 000000000000..21392f038a89
 --- /dev/null
 +++ b/llvm/lib/Transforms/Instrumentation/InsertStackMaps.cpp
-@@ -0,0 +1,358 @@
+@@ -0,0 +1,364 @@
 +#include <map>
 +#include <set>
 +#include <vector>
@@ -16904,6 +16859,12 @@ index 000000000000..4ddd7cac63ef
 +              LLVM_DEBUG(dbgs() << "WARNING: unhandled invoke:"; CS->dump());
 +              continue;
 +            }
++
++            LLVM_DEBUG (
++            dbgs() << __FUNCTION__
++                   << ": [" << this->callSiteID + 1 <<  ", " << f->getName() << "] "
++                   << *i << "\n";
++            );
 +
 +            IRBuilder<> builder(CS->getNextNode());
 +            std::vector<Value *> args(2);
@@ -17146,10 +17107,10 @@ index f56a1bd91b89..c40780384b4e 100644
    initializeThreadSanitizerLegacyPassPass(Registry);
 diff --git a/llvm/lib/Transforms/Instrumentation/LibcStackMaps.cpp b/llvm/lib/Transforms/Instrumentation/LibcStackMaps.cpp
 new file mode 100644
-index 000000000000..4f22ec742c66
+index 000000000000..5b66c611ba3a
 --- /dev/null
 +++ b/llvm/lib/Transforms/Instrumentation/LibcStackMaps.cpp
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,236 @@
 +#include <map>
 +#include <vector>
 +#include "llvm/Pass.h"
@@ -17213,7 +17174,11 @@ index 000000000000..4f22ec742c66
 +                     << file->second[f] << "\n");
 +
 +        F = M.getFunction(file->second[f]);
-+        assert(F && !F->isDeclaration() && "No thread function definition");
++
++	if (F == nullptr)
++	  continue;
++
++	assert(F && !F->isDeclaration() && "No thread function definition");
 +        modified |= this->removeOldStackmaps(F);
 +        assert(smids.find(file->second[f]) != smids.end() && "No ID for function");
 +        smid = smids.find(file->second[f])->second;
@@ -17355,7 +17320,8 @@ index 000000000000..4f22ec742c66
 + */
 +const std::map<std::string, std::vector<std::string> > LibcStackMaps::funcs = {
 +  {"__libc_start_main_popcorn", {"__libc_start_main_popcorn"}},
-+    {"__libc_start_main", {"__libc_start_main"}},
++  {"__libc_start_main", {"__libc_start_main"}},
++  {"checkpoint", {"__libc_start_main_popcorn"}},
 +  {"pthread_create", {"start", "start_c11"}},
 +};
 +
@@ -17383,10 +17349,10 @@ index 000000000000..4f22ec742c66
 +}
 diff --git a/llvm/lib/Transforms/Instrumentation/MigrationPoints.cpp b/llvm/lib/Transforms/Instrumentation/MigrationPoints.cpp
 new file mode 100644
-index 000000000000..e51cbc6b54b6
+index 000000000000..758da3dee3f9
 --- /dev/null
 +++ b/llvm/lib/Transforms/Instrumentation/MigrationPoints.cpp
-@@ -0,0 +1,489 @@
+@@ -0,0 +1,168 @@
 +//===- MigrationPoints.cpp ------------------------------------------------===//
 +//
 +//                     The LLVM Compiler Infrastructure
@@ -17397,8 +17363,7 @@ index 000000000000..e51cbc6b54b6
 +//===----------------------------------------------------------------------===//
 +//
 +// Instruments the migration points selected by SelectMigrationPoints.  May
-+// additionally add HTM instrumentation if selected by user & supported by the
-+// architecture.
++// additionally if selected by user & supported by the architecture.
 +//
 +//===----------------------------------------------------------------------===//
 +
@@ -17419,27 +17384,11 @@ index 000000000000..e51cbc6b54b6
 +#define DEBUG_TYPE "migration-points"
 +#define MIGRATE_FLAG_NAME "__migrate_flag"
 +
-+/// Disable rollback-only transactions for PowerPC.
-+const static cl::opt<bool>
-+NoROTPPC("htm-ppc-no-rot", cl::Hidden, cl::init(false),
-+  cl::desc("Disable rollback-only transactions in HTM instrumentation "
-+           "(PowerPC only)"));
-+
-+/// Add counters to abort handlers for the specified function.  Allows in-depth
-+/// profiling of which HTM sections added to the function are causing aborts.
-+const static cl::opt<std::string>
-+AbortCount("abort-count", cl::Hidden, cl::init(""),
-+  cl::desc("Add counters for each abort handler in the specified function"),
-+  cl::value_desc("function"));
-+
 +STATISTIC(NumMigPoints, "Number of migration points added");
-+STATISTIC(NumHTMBegins, "Number of HTM begin intrinsics added");
-+STATISTIC(NumHTMEnds, "Number of HTM end intrinsics added");
 +
 +namespace {
 +
-+/// MigrationPoints - insert migration points into functions, optionally adding
-+/// HTM execution.
++/// MigrationPoints - insert migration points into functions.
 +class MigrationPoints : public FunctionPass
 +{
 +public:
@@ -17452,7 +17401,7 @@ index 000000000000..e51cbc6b54b6
 +  { return "Insert migration points"; }
 +
 +  /// Generate the migration library API function declaration.
-+  void addMigrationIntrinsic(Module &M, bool DoHTM) {
++  void addMigrationIntrinsic(Module &M) {
 +    LLVMContext &C = M.getContext();
 +    Type *VoidTy = Type::getVoidTy(C);
 +    PointerType *VoidPtrTy = Type::getInt8PtrTy(C, 0);
@@ -17461,67 +17410,20 @@ index 000000000000..e51cbc6b54b6
 +    CallbackType = PointerType::get(FuncPtrTy, 0);
 +    std::vector<Type *> ArgTy = { CallbackType, VoidPtrTy };
 +    FunctionType *FuncTy = FunctionType::get(VoidTy, ArgTy, false);
-+    if(DoHTM) {
-+      MigrateAPI = M.getOrInsertFunction("migrate", FuncTy);
-+      MigrateFlag = cast<GlobalValue>(
-+        M.getOrInsertGlobal(MIGRATE_FLAG_NAME, Type::getInt32Ty(C)));
-+      // TODO this needs to be thread-local storage
-+      //MigrateFlag->setThreadLocal(true);
-+    }
-+    else {
-+      MigrateAPI = M.getOrInsertFunction("check_migrate", FuncTy);
-+      MigrateFlag = nullptr;
-+    }
++    MigrateAPI = M.getOrInsertFunction("check_migrate", FuncTy);
++    MigrateFlag = nullptr;
 +  }
 +
 +  virtual bool doInitialization(Module &M) {
-+    Triple TheTriple(M.getTargetTriple());
-+    Arch = TheTriple.getArch();
 +    Ty = Popcorn::getInstrumentationType(M);
 +
 +    switch(Ty) {
-+    case Popcorn::HTM:
-+      if(HTMBegin.find(Arch) != HTMBegin.end()) {
-+        LLVM_DEBUG(dbgs() << "\n-> MigrationPoints: Adding HTM intrinsics for '"
-+                     << TheTriple.getArchName() << "' <-\n");
-+        HTMBeginDecl =
-+          Intrinsic::getDeclaration(&M, HTMBegin.find(Arch)->second);
-+        HTMEndDecl = Intrinsic::getDeclaration(&M, HTMEnd.find(Arch)->second);
-+        HTMTestDecl =
-+          Intrinsic::getDeclaration(&M, HTMTest.find(Arch)->second);
-+        addMigrationIntrinsic(M, true);
-+      }
-+      else {
-+        LLVM_DEBUG(
-+          dbgs() << "\n-> MigrationPoints: Selected HTM instrumentation but '"
-+                 << TheTriple.getArchName()
-+                 << "' is not supported, falling back to call-outs <-\n"
-+        );
-+        Ty = Popcorn::Cycles;
-+        addMigrationIntrinsic(M, false);
-+      }
-+      break;
 +    case Popcorn::Cycles:
-+      addMigrationIntrinsic(M, false);
++      addMigrationIntrinsic(M);
 +      break;
 +    case Popcorn::None:
 +      return false;
 +    default: llvm_unreachable("Unknown instrumentation type"); break;
-+    }
-+
-+    // Add abort counters if somebody requested abort profiling.
-+    const Function *CounterFunc;
-+    if(AbortCount != "" && (CounterFunc = M.getFunction(AbortCount)) &&
-+       !CounterFunc->isDeclaration()) {
-+      LLVMContext &C = M.getContext();
-+      IntegerType *Unsigned = Type::getInt32Ty(C);
-+      GlobalVariable *NumCtrs = cast<GlobalVariable>(
-+        M.getOrInsertGlobal("__num_abort_counters", Unsigned));
-+      NumCtrs->setInitializer(ConstantInt::get(Unsigned, 1024, false));
-+      Type *ArrType = ArrayType::get(Type::getInt64Ty(C), 1024);
-+      AbortCounters = cast<GlobalVariable>(
-+        M.getOrInsertGlobal("__abort_counters", ArrType));
-+      AbortCounters->setInitializer(ConstantAggregateZero::get(ArrType));
 +    }
 +
 +    return true;
@@ -17541,72 +17443,18 @@ index 000000000000..e51cbc6b54b6
 +    findInstrumentationPoints(F);
 +
 +    // Apply code transformations to marked instructions, including adding
-+    // migration points & HTM instrumentation.
++    // migration points.
 +    addMigrationPoints(F);
-+
-+    // Write the modified IR & close the abort handler map file if we
-+    // instrumented the code to profile abort handlers.
-+    if(MapFile.is_open()) {
-+      MapFile.close();
-+      std::fstream TheIR("htm-abort-ir.ll", std::ios::out | std::ios::trunc);
-+      raw_os_ostream IRStream(TheIR);
-+      F.print(IRStream);
-+      TheIR.close();
-+    }
 +
 +    return true;
 +  }
 +
 +  /// Reset all analysis.
 +  void initializeAnalysis(const Function &F) {
-+    DoHTMInst = false;
-+    DoAbortInstrument = false;
 +    MigPointInsts.clear();
-+    HTMBeginInsts.clear();
-+    HTMEndInsts.clear();
-+
-+    if(Ty == Popcorn::HTM) {
-+      // We've checked at the global scope whether HTM is enabled for the
-+      // module.  Check whether the target-specific feature for HTM is enabled
-+      // for the current function.
-+      if(!F.hasFnAttribute("target-features")) {
-+        LLVM_DEBUG(dbgs() << "-> Disabled HTM instrumentation, "
-+                        "no 'target-features' attribute\n");
-+        return;
-+      }
-+
-+      Attribute TargetAttr = F.getFnAttribute("target-features");
-+      assert(TargetAttr.isStringAttribute() && "Invalid target features");
-+      StringRef AttrVal = TargetAttr.getValueAsString();
-+      size_t pos = StringRef::npos;
-+
-+      switch(Arch) {
-+      case Triple::ppc64le: pos = AttrVal.find("+htm"); break;
-+      case Triple::x86_64: pos = AttrVal.find("+rtm"); break;
-+      default: break;
-+      }
-+
-+      DoHTMInst = (pos != StringRef::npos);
-+
-+      LLVM_DEBUG(if(!DoHTMInst) dbgs() << "-> Disabled HTM instrumentation, HTM "
-+                                     "not listed in target-features\n");
-+
-+      // Enable HTM abort handler profiling if specified
-+      if(DoHTMInst && AbortCount == F.getName()) {
-+        DoAbortInstrument = true;
-+        AbortHandlerCount = 0;
-+        MapFile.open("htm-abort.map", std::ios::out | std::ios::trunc);
-+        assert(MapFile.is_open() && MapFile.good() &&
-+               "Could not open abort handler map file");
-+      }
-+    }
 +
 +    LLVM_DEBUG(
-+      if(DoHTMInst) {
-+        dbgs() << "-> Adding HTM instrumentation\n";
-+        if(DoAbortInstrument) dbgs() << "  - Adding abort counters\n";
-+      }
-+      else dbgs() << "-> Adding call-out instrumentation\n";
++      dbgs() << "-> Adding call-out instrumentation\n";
 +    );
 +  }
 +
@@ -17618,41 +17466,14 @@ index 000000000000..e51cbc6b54b6
 +  /// Type of the instrumentation to be applied to functions.
 +  enum Popcorn::InstrumentType Ty;
 +
-+  /// The current architecture - used to access architecture-specific HTM calls
-+  Triple::ArchType Arch;
-+
-+  /// Should we instrument code with HTM execution?  Set if HTM is enabled on
-+  /// the command line and if the target is supported
-+  bool DoHTMInst;
-+
-+  /// Should we instrument HTM abort handlers with counters for precise
-+  /// profiling of which code locations cause aborts & all associated state.
-+  bool DoAbortInstrument;
-+  GlobalVariable *AbortCounters;
-+  unsigned AbortHandlerCount;
-+  std::ofstream MapFile;
-+
 +  /// Function declaration & migration node ID for migration library API
 +  FunctionCallee MigrateAPI;
 +  GlobalValue *MigrateFlag;
 +  PointerType *CallbackType;
 +
-+  /// Function declarations for HTM intrinsics
-+  Value *HTMBeginDecl;
-+  Value *HTMEndDecl;
-+  Value *HTMTestDecl;
-+
-+  /// Per-architecture LLVM intrinsic IDs for HTM begin, HTM end, and testing
-+  /// if executing transactionally
-+  typedef std::map<Triple::ArchType, Intrinsic::ID> IntrinsicMap;
-+  const static IntrinsicMap HTMBegin;
-+  const static IntrinsicMap HTMEnd;
-+  const static IntrinsicMap HTMTest;
-+
 +  /// Code locations marked for instrumentation.
 +  SmallPtrSet<Instruction *, 32> MigPointInsts;
-+  SmallPtrSet<Instruction *, 32> HTMBeginInsts;
-+  SmallPtrSet<Instruction *, 32> HTMEndInsts;
++
 +
 +  //===--------------------------------------------------------------------===//
 +  // Instrumentation implementation
@@ -17664,8 +17485,6 @@ index 000000000000..e51cbc6b54b6
 +    for(Function::iterator BB = F.begin(), BBE = F.end(); BB != BBE; BB++) {
 +      for(BasicBlock::iterator I = BB->begin(), IE = BB->end(); I != IE; I++) {
 +        if(Popcorn::hasEquivalencePointMetadata(&*I)) MigPointInsts.insert(&*I);
-+        if(Popcorn::isHTMBeginPoint(&*I)) HTMBeginInsts.insert(&*I);
-+        if(Popcorn::isHTMEndPoint(&*I)) HTMEndInsts.insert(&*I);
 +      }
 +    }
 +  }
@@ -17681,171 +17500,12 @@ index 000000000000..e51cbc6b54b6
 +    Worker.CreateCall(MigrateAPI, Args);
 +  }
 +
-+  // Note: because we're only supporting 2 architectures for now, we're not
-+  // going to abstract this out into the appropriate Target/* folders
-+
-+  /// Add HTM begin which avoids doing any work unless there's an abort.  In
-+  /// the event of an abort, the instrumentation checks if it should migrate,
-+  /// and if so, invokes the migration API.
-+  void addHTMBeginInternal(Instruction *I, Value *Begin, Value *Comparison) {
-+    LLVMContext &C = I->getContext();
-+    BasicBlock *CurBB = I->getParent(), *NewSuccBB, *FlagCheckBB, *MigPointBB;
-+
-+    // Set up each of the new basic blocks
-+    NewSuccBB =
-+      CurBB->splitBasicBlock(I, "migpointsucc" + std::to_string(NumMigPoints));
-+    MigPointBB =
-+      BasicBlock::Create(C, "migpoint" + std::to_string(NumMigPoints),
-+                         CurBB->getParent(), NewSuccBB);
-+    FlagCheckBB =
-+      BasicBlock::Create(C, "migflagcheck" + std::to_string(NumMigPoints),
-+                         CurBB->getParent(), MigPointBB);
-+
-+    // Add check & branch based on HTM begin result Comparison.  The true
-+    // target of the branch is when we've started the transaction.
-+    IRBuilder<> HTMWorker(CurBB->getTerminator());
-+    HTMWorker.CreateCondBr(Comparison, NewSuccBB, FlagCheckBB);
-+    CurBB->getTerminator()->eraseFromParent();
-+
-+    // Check flag to see if we should invoke migration library API.
-+    IRBuilder<> FlagCheckWorker(FlagCheckBB);
-+    if(DoAbortInstrument) {
-+      assert(AbortHandlerCount < 1024 && "Too abort handler many counters!");
-+
-+      // Write the name of the basic block to the map file so we can map abort
-+      // counters to their basic blocks.
-+      if(!AbortHandlerCount) MapFile << FlagCheckBB->getName().str();
-+      else MapFile << " " << FlagCheckBB->getName().str();
-+
-+      // Add instrumentation to increment the counter's value.
-+      std::string CtrNum(std::to_string(AbortHandlerCount));
-+      std::vector<Value *> Idx = {
-+        ConstantInt::get(Type::getInt64Ty(C), 0),
-+        ConstantInt::get(Type::getInt64Ty(C), AbortHandlerCount),
-+      };
-+      Value *One = ConstantInt::get(Type::getInt64Ty(C), 1, false);
-+      Value *GEP = FlagCheckWorker.CreateInBoundsGEP(AbortCounters, Idx,
-+                                                     "ctrptr" + CtrNum);
-+      Value *CtrVal = FlagCheckWorker.CreateLoad(GEP, "ctr" + CtrNum);
-+      Value *Inc = FlagCheckWorker.CreateAdd(CtrVal, One);
-+      FlagCheckWorker.CreateStore(Inc, GEP);
-+
-+      AbortHandlerCount++;
-+    }
-+    Value *Flag = FlagCheckWorker.CreateLoad(MigrateFlag);
-+    Value *NegOne = ConstantInt::get(Type::getInt32Ty(C), -1, true);
-+    Value *Cmp = FlagCheckWorker.CreateICmpEQ(Flag, NegOne);
-+    FlagCheckWorker.CreateCondBr(Cmp, NewSuccBB, MigPointBB);
-+
-+    // Add call to migration library API.
-+    IRBuilder<> MigPointWorker(MigPointBB);
-+    std::vector<Value *> Args = {
-+      ConstantPointerNull::get(CallbackType),
-+      ConstantPointerNull::get(Type::getInt8PtrTy(C, 0))
-+    };
-+    MigPointWorker.CreateCall(MigrateAPI, Args);
-+    MigPointWorker.CreateBr(NewSuccBB);
-+  }
-+
-+  /// Add a transactional execution begin intrinsic for PowerPC, optionally
-+  /// with rollback-only transactions.
-+  void addPowerPCHTMBegin(Instruction *I) {
-+    LLVMContext &C = I->getContext();
-+    IRBuilder<> Worker(I);
-+    std::vector<Value *> Args = { ConstantInt::get(Type::getInt32Ty(C),
-+                                                   NoROTPPC ? 0 : 1,
-+                                                   false) };
-+    Value *HTMBeginVal = Worker.CreateCall(HTMBeginDecl, Args);
-+    Value *Zero = ConstantInt::get(Type::getInt32Ty(C), 0, false);
-+    Value *Cmp = Worker.CreateICmpNE(HTMBeginVal, Zero);
-+    addHTMBeginInternal(I, HTMBeginVal, Cmp);
-+  }
-+
-+  /// Add a transactional execution begin intrinsice for x86.
-+  void addX86HTMBegin(Instruction *I) {
-+    LLVMContext &C = I->getContext();
-+    IRBuilder<> Worker(I);
-+    Value *HTMBeginVal = Worker.CreateCall(HTMBeginDecl);
-+    Value *Success = ConstantInt::get(Type::getInt32Ty(C), 0xffffffff, false);
-+    Value *Cmp = Worker.CreateICmpEQ(HTMBeginVal, Success);
-+    addHTMBeginInternal(I, HTMBeginVal, Cmp);
-+  }
-+
-+  /// Add transactional execution end intrinsic for PowerPC.
-+  void addPowerPCHTMEnd(Instruction *I) {
-+    LLVMContext &C = I->getContext();
-+    IRBuilder<> EndWorker(I);
-+    ConstantInt *One = ConstantInt::get(IntegerType::getInt32Ty(C),
-+                                        1, false);
-+    EndWorker.CreateCall(HTMEndDecl, ArrayRef<Value *>(One));
-+  }
-+
-+  /// Add transactional execution check & end intrinsics for x86.
-+  void addX86HTMCheckAndEnd(Instruction *I) {
-+    // Note: x86's HTM facility will cause a segfault if an xend instruction is
-+    // called outside of a transaction, hence we need to check if we're in a
-+    // transaction before actually trying to end it.
-+    LLVMContext &C = I->getContext();
-+    BasicBlock *CurBB = I->getParent(), *NewSuccBB, *HTMEndBB;
-+    Function *CurF = CurBB->getParent();
-+
-+    // Create a new successor which contains all instructions after the HTM
-+    // check & end
-+    NewSuccBB = CurBB->splitBasicBlock(I,
-+      ".htmendsucc" + std::to_string(NumHTMEnds));
-+
-+    // Create an HTM end block, which ends the transaction and jumps to the
-+    // new successor
-+    HTMEndBB = BasicBlock::Create(C,
-+      ".htmend" + std::to_string(NumHTMEnds), CurF, NewSuccBB);
-+    IRBuilder<> EndWorker(HTMEndBB);
-+    EndWorker.CreateCall(HTMEndDecl);
-+    EndWorker.CreateBr(NewSuccBB);
-+
-+    // Finally, add the HTM test & replace the unconditional branch created by
-+    // splitBasicBlock() with a conditional branch to either end the
-+    // transaction or continue on to the new successor
-+    IRBuilder<> PredWorker(CurBB->getTerminator());
-+    CallInst *HTMTestVal = PredWorker.CreateCall(HTMTestDecl);
-+    ConstantInt *Zero = ConstantInt::get(IntegerType::getInt32Ty(C), 0, true);
-+    Value *Cmp = PredWorker.CreateICmpNE(HTMTestVal, Zero,
-+      "htmcmp" + std::to_string(NumHTMEnds));
-+    PredWorker.CreateCondBr(Cmp, HTMEndBB, NewSuccBB);
-+    CurBB->getTerminator()->eraseFromParent();
-+  }
-+
-+  /// Insert migration points & HTM instrumentation for instructions.
++  /// Insert migration points for instructions.
 +  void addMigrationPoints(Function &F) {
-+    if(DoHTMInst) {
-+      // Note: need to add the HTM ends before begins
-+      for(auto I = HTMEndInsts.begin(), E = HTMEndInsts.end(); I != E; ++I) {
-+        switch(Arch) {
-+        case Triple::ppc64le: addPowerPCHTMEnd(*I); break;
-+        case Triple::x86_64: addX86HTMCheckAndEnd(*I); break;
-+        default: llvm_unreachable("HTM -- unsupported architecture");
-+        }
-+        NumHTMEnds++;
-+      }
-+
-+      // The following APIs both insert HTM begins & migration points because
-+      // the control flow with/without abort handlers is intertwined
-+      for(auto I = HTMBeginInsts.begin(), E = HTMBeginInsts.end();
-+          I != E; ++I) {
-+        switch(Arch) {
-+        case Triple::ppc64le: addPowerPCHTMBegin(*I); break;
-+        case Triple::x86_64: addX86HTMBegin(*I); break;
-+        default: llvm_unreachable("HTM -- unsupported architecture");
-+        }
-+        NumHTMBegins++;
-+        NumMigPoints++;
-+      }
-+    }
-+    else {
-+      for(auto I = MigPointInsts.begin(), E = MigPointInsts.end();
-+          I != E; ++I) {
-+        addMigrationPoint(*I);
-+        NumMigPoints++;
-+      }
++    for(auto I = MigPointInsts.begin(), E = MigPointInsts.end();
++        I != E; ++I) {
++      addMigrationPoint(*I);
++      NumMigPoints++;
 +    }
 +  }
 +};
@@ -17853,21 +17513,6 @@ index 000000000000..e51cbc6b54b6
 +} /* end anonymous namespace */
 +
 +char MigrationPoints::ID = 0;
-+
-+const MigrationPoints::IntrinsicMap MigrationPoints::HTMBegin = {
-+  {Triple::x86_64, Intrinsic::x86_xbegin},
-+  {Triple::ppc64le, Intrinsic::ppc_tbegin}
-+};
-+
-+const MigrationPoints::IntrinsicMap MigrationPoints::HTMEnd = {
-+  {Triple::x86_64, Intrinsic::x86_xend},
-+  {Triple::ppc64le, Intrinsic::ppc_tend}
-+};
-+
-+const MigrationPoints::IntrinsicMap MigrationPoints::HTMTest = {
-+  {Triple::x86_64, Intrinsic::x86_xtest},
-+  {Triple::ppc64le, Intrinsic::ppc_ttest}
-+};
 +
 +INITIALIZE_PASS(MigrationPoints, "migration-points",
 +                "Insert migration points into functions", true, false)

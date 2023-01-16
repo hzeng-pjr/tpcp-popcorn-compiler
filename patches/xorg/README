@@ -1,0 +1,5 @@
+These X11 headers were obtained from /usr/include/{X11,xcb} located on
+the respective Popcorn target machine. You may need to install the
+following packages:
+
+  libx11-dev x11proto-core-dev x11proto-dev x11proto-xext-dev
