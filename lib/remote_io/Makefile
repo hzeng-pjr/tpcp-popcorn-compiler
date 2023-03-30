@@ -5,7 +5,7 @@
 VER_MAJ := 0
 VER_MIN := 8
 
-POPCORN := /usr/local/popcorn
+POPCORN ?= /usr/local/popcorn
 COMMON  := $(shell readlink -f ../../common)
 
 BUILD := build
@@ -14,8 +14,8 @@ SRC   := src
 UTILS := utils
 
 CC     := $(POPCORN)/bin/clang
-CFLAGS := -g -Wall -D_GNU_SOURCE -popcorn-alignment -Wno-unused-function \
-	  -fno-builtin
+CFLAGS :=  -Wall -D_GNU_SOURCE -fno-builtin -D_DEBUG -D_CHECKS -D_LOG \
+	   -fno-common -O0 -g3 -fdata-sections -ffunction-sections
 
 AR  := ar
 LOC := -I$(INC) -I$(COMMON)/include
@@ -23,17 +23,12 @@ LOC := -I$(INC) -I$(COMMON)/include
 LIB_HDR      := $(shell ls $(INC)/*.h)
 LIB_SRC      := $(shell ls $(SRC)/*.c)
 
-ifeq ($(type),debug)
-CFLAGS += -O0 -mllvm -optimize-regalloc -D_DEBUG -D_CHECKS -D_LOG
-else
-CFLAGS += -O3
-endif
-
 ###############################################################################
 # aarch64
 ###############################################################################
 
 POPCORN_AARCH64 := $(POPCORN)/aarch64
+CFLAGS_ARM    := -popcorn-metadata -popcorn-target=aarch64-linux-gnu
 
 BUILD_AARCH64 := $(BUILD)/aarch64
 LIB_AARCH64   := $(BUILD_AARCH64)/libremote_io.a
@@ -47,6 +42,7 @@ LIB_OBJ_AARCH64      := $(subst $(SRC),$(BUILD_AARCH64),$(LIB_SRC:.c=.o))
 ###############################################################################
 
 POPCORN_X86_64 := $(POPCORN)/x86_64
+CFLAGS_X86   := -popcorn-metadata -popcorn-target=x86_64-linux-gnu
 
 BUILD_X86_64 := $(BUILD)/x86_64
 LIB_X86_64   := $(BUILD_X86_64)/libremote_io.a
@@ -98,6 +94,10 @@ install-aarch64: $(LIB_AARCH64)
 build/x86_64/%.o: src/%.c $(LIB_HDR)
 	@echo " [CC-x86_64] $<"
 	@$(CC_X86_64) $(CFLAGS) $(LOC_X86_64) -o $@ -c $<
+
+build/x86_64/sys_%.o: src/sys_%.c $(LIB_HDR)
+	@echo " [CC-x86_64] $<"
+	@$(CC_X86_64) $(CFLAGS) $(LOC_X86_64) $(CFLAGS_X86) -o $@ -c $<
 
 $(LIB_OBJ_X86_64): $(BUILD_X86_64)/.dir
 

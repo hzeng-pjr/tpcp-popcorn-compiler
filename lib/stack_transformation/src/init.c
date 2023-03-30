@@ -29,6 +29,11 @@ __st_ctor(void)
 #ifdef _LOG
 #ifndef _PER_LOG_OPEN
   __log = lio_open(LOG_FILE, O_RDWR | O_CREAT, 0644);
+  if (__log == 0)
+    {
+      lio_dbg_printf ("ST: pid = %d\n", getpid());
+      lio_spin ();
+    }
   ASSERT(__log, "could not open log file\n");
 #endif
   ST_RAW_INFO("\n");
@@ -93,7 +98,7 @@ st_handle st_init(const char* fn)
     handle->unwind_addrs = get_section_data(handle->elf,
                                             SECTION_ST_UNWIND_ADDR);
     if(!handle->unwind_addrs) goto close_elf;
-    ST_INFO("Found %lu per-function unwinding metadata entries\n",
+    ST_INFO("Found %ld per-function unwinding metadata entries\n",
             handle->unwind_addr_count);
   }
   else
@@ -108,7 +113,7 @@ st_handle st_init(const char* fn)
   {
     handle->unwind_locs = get_section_data(handle->elf, SECTION_ST_UNWIND);
     if(!handle->unwind_locs ) goto close_elf;
-    ST_INFO("Found %lu callee-saved frame unwinding entries\n",
+    ST_INFO("Found %ld callee-saved frame unwinding entries\n",
             handle->unwind_count);
   }
   else
@@ -124,7 +129,7 @@ st_handle st_init(const char* fn)
     handle->sites_id = get_section_data(handle->elf, SECTION_ST_ID);
     handle->sites_addr = get_section_data(handle->elf, SECTION_ST_ADDR);
     if(!handle->sites_id || !handle->sites_addr) goto close_elf;
-    ST_INFO("Found %lu call sites\n", handle->sites_count);
+    ST_INFO("Found %ld call sites\n", handle->sites_count);
   }
   else
   {
@@ -138,7 +143,7 @@ st_handle st_init(const char* fn)
   {
     handle->live_vals = get_section_data(handle->elf, SECTION_ST_LIVE);
     if(!handle->live_vals) goto close_elf;
-    ST_INFO("Found %lu live value location records\n",
+    ST_INFO("Found %ld live value location records\n",
             handle->live_vals_count);
   }
   else
@@ -154,7 +159,7 @@ st_handle st_init(const char* fn)
     handle->arch_live_vals = get_section_data(handle->elf,
                                               SECTION_ST_ARCH_LIVE);
     if(!handle->arch_live_vals) goto close_elf;
-    ST_INFO("Found %lu architecture-specific live value location records\n",
+    ST_INFO("Found %ld architecture-specific live value location records\n",
             handle->arch_live_vals_count);
   }
   else

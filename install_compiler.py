@@ -37,10 +37,17 @@ linux_targets = {
     'x86_64' : 'x86'
 }
 
+def get_gcc(target):
+    if (target == 'x86_64' and os.path.exists('/etc/redhat-release')):
+        return 'x86_64-redhat-linux-gcc'
+    return '{}-linux-gnu-gcc'.format(target)
+
 # The installation directory for the cross compilers
-cross_dir = shutil.which("x86_64-linux-gnu-gcc")
+host_gcc = get_gcc('x86_64')
+
+cross_dir = shutil.which(host_gcc)
 if (cross_dir is None):
-    print("Error: missing x86_64-linux-gnu-gcc toolchain")
+    print("Error: missing {} toolchain".format(host_gcc))
     sys.exit(1);
 
 cross_path = os.path.dirname(os.path.dirname(cross_dir))
@@ -311,8 +318,14 @@ def check_for_prerequisites(args):
 
     print('Checking for prerequisites (see README for more info)...')
     gcc_prerequisites = ['x86_64-linux-gnu-g++']
+
+    if (host_gcc == 'x86_64-redhat-linux-gcc'):
+        gcc_prerequisites = ['x86_64-redhat-linux-g++']
+
     for target in args.install_targets:
-        gcc_prerequisites.append('{}-linux-gnu-gcc'.format(target))
+        gcc = '{}-linux-gnu-gcc'.format(target)
+        gcc_prerequisites.append(get_gcc(target))
+
     other_prerequisites = ['flex', 'bison', 'cmake', 'libtool', 'make', 'zip']
 
     for prereq in gcc_prerequisites:
@@ -740,7 +753,7 @@ def install_gcc_glibc(base_path, install_path, install_targets, num_threads):
             print ("cp {} {}".format(src + "/" + i, dst + "/" + i))
             shutil.copyfile(os.path.join(src, i), os.path.join(dst, i))
 
-        args = ['{}-linux-gnu-gcc'.format(target),
+        args = [get_gcc(target),
                 '-o', '{}/lib/libc.so'.format(sysroot),
                 '-nostdlib', '-nostartfiles', '-shared', '-x', 'c',
                 '/dev/null']
@@ -981,7 +994,7 @@ def do_install_glibc(target, base_path, install_path, glibc_download_path,
         #print ("cp {} {}".format(src + "/" + i, dst + "/" + i))
         shutil.copyfile(os.path.join(src, i), os.path.join(dst, i))
 
-    args = ['{}-linux-gnu-gcc'.format(target),
+    args = [get_gcc(target),
             '-o', '{}/lib/libc.so'.format(sysroot),
             '-nostdlib', '-nostartfiles', '-shared', '-x', 'c',
             '/dev/null']
@@ -1155,7 +1168,7 @@ def install_libopenpop(base_path, install_path, target, first_target, num_thread
     # NOTE: this won't be needed if we force clang to emit 64-bit doubles when
     # compiling musl (currently, it needs soft-FP emulation for 128-bit long
     # doubles)
-    args = ['{}-linux-gnu-gcc'.format(target), '-print-libgcc-file-name']
+    args = [get_gcc(target), '-print-libgcc-file-name']
     libgcc = get_cmd_output('get libgcc file name ({})'.format(target), args)
     libgcc = libgcc.strip()
 
@@ -1223,6 +1236,8 @@ def install_migration(base_path, install_path, num_threads, libmigration_type,
             '-j', str(num_threads),
             'POPCORN={}'.format(install_path),
             'LLVM_VERSION={}'.format(llvm_version)]
+    if os.path.exists('/etc/redhat-release'):
+        args += ['AS_X86=as']
     if libmigration_type or enable_libmigration_timing:
         flags = 'type='
         if libmigration_type and enable_libmigration_timing:
@@ -1271,7 +1286,7 @@ def do_install_git(install_path, threads, name, url, branch, dir, autogen, cfg):
                '--target=aarch64-popcorn-linux-gnu',
                'cross_compiling=yes',
                'CC={}/bin/clang'.format(install_path),
-               'CFLAGS=-O0 -g3 -ffunction-sections -fdata-sections -mllvm -popcorn-instrument=metadata -mllvm -optimize-regalloc -mllvm -fast-isel=false --target=aarch64-popcorn-linux-gnu --gcc-toolchain={} --sysroot={}/aarch64'.format(install_path, install_path),
+               'CFLAGS=-O0 -g -fdata-sections --target=aarch64-popcorn-linux-gnu --gcc-toolchain={} --sysroot={}/aarch64'.format(install_path, install_path),
                'LD=clang --target=aarch64-popcorn-linux-gnu --gcc-toolchain={}'.format(install_path),
                '--disable-shared',
                '--prefix=/']
@@ -1292,7 +1307,7 @@ def do_install_git(install_path, threads, name, url, branch, dir, autogen, cfg):
                 '--target=x86_64-popcorn-linux-gnu',
                'cross_compiling=yes',
                'CC={}/bin/clang'.format(install_path),
-               'CFLAGS=-O0 -g3 -ffunction-sections -fdata-sections -mllvm -popcorn-instrument=metadata -mllvm -optimize-regalloc -mllvm -fast-isel=false --target=x86_64-popcorn-linux-gnu --gcc-toolchain={} --sysroot={}/x86_64'.format(install_path, install_path),
+               'CFLAGS=-O0 -g -fdata-sections --target=x86_64-popcorn-linux-gnu --gcc-toolchain={} --sysroot={}/x86_64'.format(install_path, install_path),
                'LD=clang --target=x86_64-popcorn-linux-gnu --gcc-toolchain={}'.format(install_path),
                '--disable-shared',
                '--prefix=/']
@@ -1336,17 +1351,17 @@ def install_x11_libraries(base_path, install_path, threads):
                    "0.11.5", ".", "./autogen", [])
 
     # Build the X11 libraries
-    libs = [["libxt", "master", "libxt.patch", "src"],
-            ["libxaw", "master", "", "src"],
-            ["libxmu", "master", "", "src"],
-            ["libxext", "master", "", "src"],
-            ["libxpm", "master", "", "src"],
+    libs = [["libxt", "libXt-1.2.1", "libxt.patch", "src"],
             ["libxcb", "libxcb-1.14", "libxcb.patch", "src"],
+            ["libx11", "libX11-1.7.2", "libx11.patch", "."],
+            ["libxaw", "libXaw-1.0.13", "", "src"],
+            ["libxmu", "libXmu-1.1.3", "", "src"],
+            ["libxext", "libXext-1.3.4", "", "src"],
+            ["libxpm", "libXpm-3.5.12", "", "src"],
             ["libxau", "libXau-1.0.10", "", "."],
-            ["libxdmcp", "master", "", "."],
+            ["libxdmcp", "libXdmcp-1.1.3", "", "."],
             ["libice", "libICE-1.0.10", "", "src"],
-            ["libsm", "libSM-1.2.3", "", "src"],
-            ["libx11", "libX11-1.7.2", "", "."]]
+            ["libsm", "libSM-1.2.3", "", "src"]]
 
     for (l, t, p, s) in libs:
         src_dir = os.path.join(install_path, "src", l)
@@ -1366,7 +1381,7 @@ def install_x11_libraries(base_path, install_path, threads):
                    '--target=aarch64-popcorn-linux-gnu',
                    'cross_compiling=yes',
                    'CC={}/bin/clang'.format(install_path),
-                   'CFLAGS=-O0 -g3 -ffunction-sections -fdata-sections -mllvm -popcorn-instrument=metadata -mllvm -optimize-regalloc -mllvm -fast-isel=false --target=aarch64-popcorn-linux-gnu --gcc-toolchain={} --sysroot={}/aarch64'.format(install_path, install_path),
+                   'CFLAGS=-O0 -g -fdata-sections -ffunction-sections --target=aarch64-popcorn-linux-gnu --gcc-toolchain={} --sysroot={}/aarch64'.format(install_path, install_path),
                    'LD=clang --target=aarch64-popcorn-linux-gnu --gcc-toolchain={}'.format(install_path),
                    'PYTHON=python3',
                    '--disable-shared',
@@ -1374,13 +1389,16 @@ def install_x11_libraries(base_path, install_path, threads):
         if l != "libXau":
             arm_cfg += ['--enable-malloc0returnsnull']
         if l == "libx11":
-            arm_cfg += ['--disable-loadable-xcursor']
+            arm_cfg += ['--disable-loadable-xcursor', '--disable-xthreads']
         run_cmd('Configuring {} for ARM'.format(l), arm_cfg)
 
         build_cmd = ['make', '-j{}'.format(threads), '-C', s]
         run_cmd("Building '{}' for ARM".format(l), build_cmd)
 
         do_copy_file_type('.', install_path + "/aarch64/lib", '*.a')
+        if l == "libx11":
+            XlibConf_h = "include/X11/XlibConf.h"
+            shutil.copy(XlibConf_h, install_path + "/aarch64/include/X11")
 
         clean_cmd = ['make', 'clean']
         run_cmd("Cleaning {}".format(l), clean_cmd)
@@ -1389,7 +1407,7 @@ def install_x11_libraries(base_path, install_path, threads):
                    '--target=x86_64-popcorn-linux-gnu',
                    'cross_compiling=yes',
                    'CC={}/bin/clang'.format(install_path),
-                   'CFLAGS=-O0 -g3 -ffunction-sections -fdata-sections -mllvm -popcorn-instrument=metadata -mllvm -optimize-regalloc -mllvm -fast-isel=false --target=x86_64-popcorn-linux-gnu --gcc-toolchain={} --sysroot={}/x86_64'.format(install_path, install_path),
+                   'CFLAGS=-O0 -g -fdata-sections -ffunction-sections --target=x86_64-popcorn-linux-gnu --gcc-toolchain={} --sysroot={}/x86_64'.format(install_path, install_path),
                    'LD=clang --target=x86_64-popcorn-linux-gnu --gcc-toolchain={}'.format(install_path),
                    'PYTHON=python3',
                    '--disable-shared',
@@ -1397,14 +1415,16 @@ def install_x11_libraries(base_path, install_path, threads):
         if l != "libXau":
             x86_cfg += ['--enable-malloc0returnsnull']
         if l == "libx11":
-            x86_cfg += ['--disable-loadable-xcursor']
+            x86_cfg += ['--disable-loadable-xcursor', '--disable-xthreads']
         run_cmd('Configuring {} for X86'.format(l), x86_cfg)
 
         build_cmd = ['make', '-j{}'.format(threads), '-C', s]
         run_cmd("Building '{}' for X86".format(l), build_cmd)
 
         do_copy_file_type('.', install_path + "/x86_64/lib", '*.a')
-
+        if l == "libx11":
+            XlibConf_h = "include/X11/XlibConf.h"
+            shutil.copy(XlibConf_h, install_path + "/x86_64/include/X11")
 
 def install_stackdepth(base_path, install_path, num_threads):
     cur_dir = os.getcwd()
@@ -1481,9 +1501,7 @@ def install_utils(base_path, install_path, num_threads):
     # PREPARE SETPATH SCRIPT
     #=====================================================
     setpath = """export POPCORN={}
-
-DEPS=${{HOME}}/rtl/popcorn/deps/inst
-export PATH=${{POPCORN}}/bin:${{POPCORN}}/x86_64/bin:${{DEPS}}/bin:$PATH
+export PATH=${{POPCORN}}/bin:${{POPCORN}}/x86_64/bin:$PATH
 """
 
     f = open (install_path + "/setpath", "w")

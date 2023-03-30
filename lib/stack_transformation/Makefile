@@ -5,7 +5,7 @@
 VER_MAJ := 0
 VER_MIN := 8
 
-POPCORN := /usr/local/popcorn
+POPCORN ?= /usr/local/popcorn
 COMMON  := $(shell readlink -f ../../common)
 
 BUILD := build
@@ -14,7 +14,8 @@ SRC   := src
 UTILS := utils
 
 CC     := $(POPCORN)/bin/clang
-CFLAGS := -g -Wall -D_GNU_SOURCE -popcorn-alignment -Wno-unused-function
+CFLAGS := -g -Wall -D_GNU_SOURCE -popcorn-alignment -Wno-unused-function \
+	  -ffreestanding
 
 AR  := ar
 LOC := -I$(INC) -I$(COMMON)/include
@@ -150,6 +151,11 @@ build/aarch64/arch/powerpc64/%.o: src/arch/powerpc64/%.c $(LIB_HDR)
 build/aarch64/arch/x86_64/%.o: src/arch/x86_64/%.c $(LIB_HDR)
 	@echo " [CC-aarch64] $<"
 	@$(CC_AARCH64) $(CFLAGS) $(LOC_AARCH64) -o $@ -c $<
+
+# rewrite.c needs to be built with -O to avoid calling builtin memcpy.
+build/aarch64/rewrite.o: src/rewrite.c $(LIB_HDR)
+	@echo " [CC-aarch64] $<"
+	@$(CC_AARCH64) $(CFLAGS) $(LOC_AARCH64) -O -o $@ -c $<
 
 build/aarch64/%.o: src/%.c $(LIB_HDR)
 	@echo " [CC-aarch64] $<"

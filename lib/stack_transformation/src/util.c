@@ -160,6 +160,9 @@ bool get_site_by_id(st_handle handle, uint64_t csid, call_site* cs)
     mid = (max + min) / 2;
     if(handle->sites_id[mid].id == csid) {
       lio_memcpy (cs, &handle->sites_id[mid], sizeof (call_site));
+//      lio_dbg_printf ("%s: found callsite %d: id = %d, addr = %lx, frame_size = %d, num_live = %d, num_unwind = %d\n",
+//                      __FUNCTION__, mid, cs->id, cs->addr, cs->frame_size, cs->num_live,
+//                      cs->num_unwind);
       found = true;
       break;
     }

@@ -1,3 +1,47 @@
+diff --git a/include/X11/InitialI.h b/include/X11/InitialI.h
+index f64a68d..a2e0908 100644
+--- a/include/X11/InitialI.h
++++ b/include/X11/InitialI.h
+@@ -271,9 +271,7 @@ extern int _XtWaitForSomething(
+     _XtBoolean 		/* ignoreInputs */,
+     _XtBoolean		/* ignoreSignals */,
+     _XtBoolean 		/* block */,
+-#ifdef XTHREADS
+     _XtBoolean		/* drop_lock */,
+-#endif
+     unsigned long*	/* howlong */
+ );
+ 
+diff --git a/src/Alloc.c b/src/Alloc.c
+index 8cd3f5b..6752815 100644
+--- a/src/Alloc.c
++++ b/src/Alloc.c
+@@ -84,11 +84,12 @@ in this Software without prior written authorization from The Open Group.
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <stdarg.h>
++#include <local_io.h>
+ 
+-#define Xmalloc(size) malloc((size))
+-#define Xrealloc(ptr, size) realloc((ptr), (size))
+-#define Xcalloc(nelem, elsize) calloc((nelem), (elsize))
+-#define Xfree(ptr) free(ptr)
++#define Xmalloc(size) lio_malloc((size))
++#define Xrealloc(ptr, size) lio_realloc((ptr), (size))
++#define Xcalloc(nelem, elsize) lio_calloc((nelem), (elsize))
++#define Xfree(ptr) lio_free(ptr)
+ 
+ #ifdef _XNEEDBCOPYFUNC
+ void
+@@ -214,7 +215,7 @@ XtCalloc(unsigned num, unsigned size)
+ void
+ XtFree(char *ptr)
+ {
+-    free(ptr);
++    lio_free(ptr);
+ }
+ 
+ char *
 diff --git a/src/Event.c b/src/Event.c
 index dadcede..58693eb 100644
 --- a/src/Event.c
@@ -19,3 +63,84 @@ index dadcede..58693eb 100644
          if (m == 0) {
              m = XtIMAll;
              /* wait for any event, blocking */
+diff --git a/src/Makefile.am b/src/Makefile.am
+index a26e10d..bdbf66a 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -92,6 +92,11 @@ BUILT_FILES = $(BUILT_SOURCE) $(BUILT_HEADER)
+ 
+ STRING_LIST = $(top_srcdir)/util/string.list
+ 
++PCN_CFLAGS = -O0 -g3 -ffunction-sections -fdata-sections -mllvm -popcorn-instrument=metadata -mllvm -optimize-regalloc -mllvm -fast-isel=false $(AM_CPPFLAGS)
++
++Event.lo : CFLAGS += $(PCN_CFLAGS)
++NextEvent.lo : CFLAGS += $(PCN_CFLAGS)
++
+ all-local: $(BUILT_FILES)
+ 
+ $(BUILT_HEADER): $(BUILT_SOURCE)
+diff --git a/src/NextEvent.c b/src/NextEvent.c
+index 6999c4f..1a97e53 100644
+--- a/src/NextEvent.c
++++ b/src/NextEvent.c
+@@ -83,6 +83,8 @@ static TimerEventRec *freeTimerRecs;
+ static WorkProcRec *freeWorkRecs;
+ static SignalEventRec *freeSignalRecs;
+ 
++#define LIO_LIVE(var) (*(volatile typeof(var)*)&(var))
++
+ /* Some systems running NTP daemons are known to return strange usec
+  * values from gettimeofday.
+  */
+@@ -370,12 +372,19 @@ AdjustTimes(XtAppContext app,
+ static int
+ IoWait(wait_times_ptr_t wt, wait_fds_ptr_t wf)
+ {
++    int res;
++
+ #ifdef USE_POLL
+-    return poll(wf->fdlist, (nfds_t) wf->fdlistlen, wt->poll_wait);
++    res = poll(wf->fdlist, (nfds_t) wf->fdlistlen, wt->poll_wait);
+ #else
+-    return Select (wf->nfds, &wf->rmask, &wf->wmask, &wf->emask,
++    res = Select (wf->nfds, &wf->rmask, &wf->wmask, &wf->emask,
+                    wt->wait_time_ptr);
+ #endif
++
++    LIO_LIVE(wt);
++    LIO_LIVE(wf);
++
++    return res;
+ }
+ 
+ static void
+@@ -647,6 +656,15 @@ _XtWaitForSomething(XtAppContext app,
+         else
+ #endif                          /* } */
+             nfds = IoWait(&wt, &wf);
++
++	LIO_LIVE (wt);
++	LIO_LIVE (wf);
++	LIO_LIVE (nfds);
++	LIO_LIVE (dpy_no);
++	LIO_LIVE (found_input);
++	LIO_LIVE (dd);
++	LIO_LIVE (fdlist);
++
+         if (nfds == -1) {
+             /*
+              *  interrupt occured recalculate time value and wait again.
+diff --git a/src/Shell.c b/src/Shell.c
+index 07713cc..ed33f33 100644
+--- a/src/Shell.c
++++ b/src/Shell.c
+@@ -2017,9 +2017,7 @@ _wait_for_response(ShellWidget w, XEvent *event, unsigned long request_num)
+ 
+     while (timeout > 0) {
+         if (_XtWaitForSomething(app, FALSE, TRUE, TRUE, TRUE, TRUE,
+-#ifdef XTHREADS
+                                 FALSE,
+-#endif
+                                 &timeout) != -1) {
+             while (XCheckIfEvent(XtDisplay(w), event, isMine, (char *) &q)) {
+                 if (q.done)

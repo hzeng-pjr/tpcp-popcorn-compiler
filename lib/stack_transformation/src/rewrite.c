@@ -244,7 +244,7 @@ static rewrite_context init_src_context(st_handle handle,
   // Note: we need both the SP & call site information to set up CFA
   if(!get_site_by_addr(handle, REGOPS(ctx)->pc(ACT(ctx).regs), &ACT(ctx).site))
     ST_ERR(1, "could not get source call site information for outermost frame "
-           "(address=%lx)\n", REGOPS(ctx)->pc(ACT(ctx).regs));
+           "(address=%lx, pid=%d)\n", REGOPS(ctx)->pc(ACT(ctx).regs), getpid());
   ACT(ctx).cfa = calculate_cfa(ctx, 0);
 
   TIMER_STOP(init_src_context);
@@ -367,16 +367,26 @@ static void unwind_and_size(rewrite_context src,
      * Call site meta-data will be used to get return addresses, canonical
      * frame addresses and frame-base pointer locations.
      */
-    if(!get_site_by_addr(src->handle, REGOPS(src)->pc(ACT(src).regs), &ACT(src).site))
-      ST_ERR(1, "could not get source call site information (address=%lx)\n",
-             REGOPS(src)->pc(ACT(src).regs));
+    if(!get_site_by_addr(src->handle, REGOPS(src)->pc(ACT(src).regs), &ACT(src).site)) {
+      lio_dbg_printf (">>> %s: could not get source call site information (address=%lx, pid=%d)\n",
+                      __FUNCTION__, REGOPS(src)->pc(ACT(src).regs), lio_getpid());
+      ST_ERR(1, "could not get source call site information (address=%lx, pid=%d)\n",
+             REGOPS(src)->pc(ACT(src).regs), lio_getpid());
+    }
 
-    if(!get_site_by_id(dest->handle, ACT(src).site.id, &ACT(dest).site))
+    if(!get_site_by_id(dest->handle, ACT(src).site.id, &ACT(dest).site)) {
+      lio_dbg_printf (">>> %s: could not get destination call site information (address=%lx, ID=%lu)\n",
+                      __FUNCTION__, REGOPS(src)->pc(ACT(src).regs), ACT(src).site.id);
       ST_ERR(1, "could not get destination call site information (address=%lx, ID=%lu)\n",
              REGOPS(src)->pc(ACT(src).regs), ACT(src).site.id);
+    }
 
     /* Update stack size with newly discovered stack frame's size */
     stack_size += ACT(dest).site.frame_size;
+
+    //lio_dbg_printf ("%s: stack_size = %ld, site stack = %ld (address=%lx, ID=%lu)\n",
+    //                __FUNCTION__, stack_size, ACT(dest).site.frame_size,
+    //                REGOPS(src)->pc(ACT(src).regs), ACT(src).site.id);
 
     /* Set the CFA for the current frame, which becomes the next frame's SP */
     // Note: we need both the SP & call site information to set up CFA
@@ -475,7 +485,7 @@ static bool rewrite_val(rewrite_context src, const live_value* val_src,
     {
       ST_INFO("Adding fixup for pointer-to-stack %lx\n", stack_addr);
       fixup_data.src_addr = stack_addr;
-      fixup_data.act = dest->act;
+      lio_memcpy (&fixup_data.act, &dest->act, sizeof (dest->act));
       fixup_data.dest_loc = val_dest;
       list_add(fixup, &dest->stack_pointers, fixup_data);
 
@@ -605,9 +615,15 @@ static void rewrite_frame(rewrite_context src, rewrite_context dest)
   TIMER_FG_START(rewrite_frame);
   ST_INFO("Rewriting frame (CFA: %lx -> %lx)\n", ACT(src).cfa, ACT(dest).cfa);
 
+//  lio_dbg_printf ("%s: rewriting CFA 0x%lx -> 0x%lx: id = %d, addr = 0x%lx, frame_size = %d, num_live = %d, num_unwind = %d\n",
+//                  __FUNCTION__, ACT(src).cfa, ACT(dest).cfa, ACT(src).site.id, ACT(src).site.addr - ACT(src).site.frame_size,
+//                  ACT(src).site.frame_size, ACT(src).site.num_live, ACT(src).site.num_unwind);
+  //lio_spin ();
+
   /* Copy live values */
   src_offset = ACT(src).site.live_offset;
   dest_offset = ACT(dest).site.live_offset;
+
   for(i = 0, j = 0; j < ACT(dest).site.num_live; i++, j++)
   {
     ASSERT(i < src->handle->live_vals_count,

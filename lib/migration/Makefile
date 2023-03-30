@@ -1,4 +1,4 @@
-POPCORN         := /usr/local/popcorn
+POPCORN         ?= /usr/local/popcorn
 POPCORN_ARM     := $(POPCORN)/aarch64
 POPCORN_POWERPC := $(POPCORN)/powerpc64
 POPCORN_X86     := $(POPCORN)/x86_64
@@ -36,6 +36,9 @@ CFLAGS_POWERPC := $(CFLAGS) -target powerpc64le-linux-gnu
 CFLAGS_X86     := $(CFLAGS) -target x86_64-linux-gnu
 CFLAGS_LIBC    := -ffunction-sections -fdata-sections -popcorn-libc -fno-unwind-tables -Os
 
+CFLAGS_SYS_ARM := -popcorn-metadata -popcorn-target=aarch64-linux-gnu
+CFLAGS_SYS_X86 := -popcorn-metadata -popcorn-target=x86_64-linux-gnu
+
 COMMON      := $(shell readlink -f ../../common/include)
 INC         := -I./include -I$(COMMON)
 INC_ARM     := $(INC) -isystem $(POPCORN_ARM)/include
@@ -53,7 +56,7 @@ endif
 
 AS_ARM           := aarch64-linux-gnu-as
 AS_POWERPC       := powerpc64le-linux-gnu-as
-AS_X86           := x86_64-linux-gnu-as
+AS_X86           ?= x86_64-linux-gnu-as
 AS_FLAGS_ARM     := --defsym __aarch64__=1
 AS_FLAGS_POWERPC := --defsym __powerpc64__=1
 AS_FLAGS_X86     := --defsym __x86_64__=1
@@ -140,6 +143,10 @@ $(BUILD_ARM)/arch/x86_64/%.o: src/arch/x86_64/%.s
 	@echo " [AS] $< (aarch64)"
 	@$(AS_ARM) $(AS_FLAGS_ARM) -o $@ $<
 
+$(BUILD_ARM)/sys_%.o: src/sys_%.c $(LIB_HDR)
+	@echo " [CC-aarch64] $<"
+	@$(CC) -O0 -g -target aarch64-linux-gnu $(CFLAGS_SYS_ARM) $(INC_ARM) -c -o $@ $<
+
 $(OBJ_ARM): $(BUILD_ARM)/.dir $(BUILD_ARM)/arch/aarch64/.dir \
 	     $(BUILD_ARM)/arch/powerpc64/.dir $(BUILD_ARM)/arch/x86_64/.dir
 $(LIB_ARM): $(HDR_ARM) $(OBJ_ARM)
@@ -168,6 +175,10 @@ $(BUILD_X86)/arch/powerpc64/%.o: src/arch/powerpc64/%.s $(BUILD_X86)/arch/powerp
 $(BUILD_X86)/arch/x86_64/%.o: src/arch/x86_64/%.s $(BUILD_X86)/arch/x86_64/.dir
 	@echo " [AS] $< (x86-64)"
 	@$(AS_X86) $(AS_FLAGS_X86) -o $@ $<
+
+$(BUILD_X86)/sys_%.o: src/sys_%.c $(LIB_HDR)
+	@echo " [CC-x86_64] $<"
+	@$(CC) -O0 -g -target x86_64-linux-gnu $(CFLAGS_SYS_X86) $(INC_X86) -c -o $@ $<
 
 $(OBJ_X86): $(BUILD_X86)/.dir $(BUILD_X86)/arch/aarch64/.dir \
 	     $(BUILD_X86)/arch/powerpc64/.dir $(BUILD_X86)/arch/x86_64/.dir

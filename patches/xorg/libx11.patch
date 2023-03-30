@@ -1,0 +1,13 @@
+diff --git a/src/XlibInt.c b/src/XlibInt.c
+index 297b771..d2c5f76 100644
+--- a/src/XlibInt.c
++++ b/src/XlibInt.c
+@@ -31,6 +31,8 @@ from The Open Group.
+  *	interface library (Xlib) to the X Window System Protocol V11.0.
+  */
+ 
++#include <sys/ioctl.h>
++
+ #ifdef WIN32
+ #define _XLIBINT_
+ #endif

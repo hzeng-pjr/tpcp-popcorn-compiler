@@ -54,7 +54,7 @@ static inline void restore_callee_saved_regs(rewrite_context ctx, int act)
   for(i = unwind_start; i < unwind_end; i++)
   {
     saved_loc = REGOPS(ctx)->fbp(ctx->acts[act - 1].regs) + locs[i].offset;
-    ST_INFO("Callee-saved: %u at FBP + %u (%lx)\n",
+    ST_INFO("Callee-saved: %d at FBP + %d (%lx)\n",
             locs[i].reg, locs[i].offset, saved_loc);
     lio_memcpy(REGOPS(ctx)->reg(ctx->acts[act].regs, locs[i].reg), saved_loc,
                PROPS(ctx)->callee_reg_size(locs[i].reg));
@@ -127,6 +127,10 @@ inline void* calculate_cfa(rewrite_context ctx, int act)
 {
   ASSERT(ctx->acts[act].site.addr, "Invalid call site information\n");
   ASSERT(REGOPS(ctx)->sp(ctx->acts[act].regs), "Invalid stack pointer\n");
+  ST_INFO ("Calculating CFA @ %lx, frame_size = %d, act = %d (id = %ld, addr = %lx)\n",
+	   REGOPS(ctx)->sp(ctx->acts[act].regs),
+	   (int) ctx->acts[act].site.frame_size, act,
+	   ctx->acts[act].site.id, ctx->acts[act].site.addr);
   return REGOPS(ctx)->sp(ctx->acts[act].regs) + ctx->acts[act].site.frame_size;
 }
 

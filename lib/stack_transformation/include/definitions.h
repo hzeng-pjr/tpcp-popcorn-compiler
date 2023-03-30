@@ -56,6 +56,7 @@
     lio_fprintf(__log, "[" __FILE__ ":" STR(__LINE__) "] ERROR: " str, ##__VA_ARGS__); \
     CLOSE_LOG_FILE; \
     CLOSE_GLOBAL_LOG_FILE; \
+    lio_spin (); \
     lio_exit(code); \
   }
 #else

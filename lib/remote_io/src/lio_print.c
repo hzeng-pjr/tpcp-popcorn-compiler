@@ -69,18 +69,28 @@ write_str (char *str, size_t size, struct iovec *iov, int niov)
    the formats and flags needed and can handle only up to 64 stripes in
    the output.  */
 static int
-pcn_dl_debug_vdprintf (int fd, int tag_p, char *str, size_t size,
+pcn_dl_debug_vdprintf (int fd, int tag_p, int show_pid, char *str, size_t size,
                        const char *fmt, va_list arg)
 {
 # define NIOVMAX 64
   struct iovec iov[NIOVMAX];
   int niov = 0;
   const char *server_msg = "> pcn_server: ";
+  char pidbuf[20];
+
+  /* Print out [PID] prefix.  */
+  if (show_pid)
+    {
+      rio_dbg_snprintf (pidbuf, 20, "(%d) ", pcn_data->rio_my_pid);
+      iov[0].iov_base = pidbuf;
+      iov[0].iov_len = lio_strlen (pidbuf);
+      niov++;
+    }
 
   if (pcn_mode == 1)
     {
-      iov[0].iov_base = (void *)server_msg;
-      iov[0].iov_len = lio_strlen (server_msg);
+      iov[niov].iov_base = (void *)server_msg;
+      iov[niov].iov_len = lio_strlen (server_msg);
       niov++;
     }
 
@@ -275,7 +285,7 @@ rio_dbg_printf (const char *fmt, ...)
     return 0;
 
   va_start (arg, fmt);
-  ret = pcn_dl_debug_vdprintf (STDOUT_FILENO, 0, NULL, 0, fmt, arg);
+  ret = pcn_dl_debug_vdprintf (pcn_data->rio_debug_fd, 0, 1, NULL, 0, fmt, arg);
   va_end (arg);
 
   return ret;
@@ -292,7 +302,7 @@ rio_dbg_fprintf (int fd, const char *fmt, ...)
     return 0;
 
   va_start (arg, fmt);
-  ret = pcn_dl_debug_vdprintf (fd, 0, NULL, 0, fmt, arg);
+  ret = pcn_dl_debug_vdprintf (fd, 0, 1, NULL, 0, fmt, arg);
   va_end (arg);
 
   return ret;
@@ -308,7 +318,7 @@ rio_dbg_snprintf (char *str, size_t size, const char *fmt, ...)
   pcn_mode = 0;
 
   va_start (arg, fmt);
-  ret = pcn_dl_debug_vdprintf (-1, 0, str, size, fmt, arg);
+  ret = pcn_dl_debug_vdprintf (-1, 0, 0, str, size, fmt, arg);
   va_end (arg);
 
   pcn_mode = t;
@@ -319,7 +329,7 @@ rio_dbg_snprintf (char *str, size_t size, const char *fmt, ...)
 int
 rio_dbg_vfprintf (int fd, const char *restrict fmt, va_list arg)
 {
-  return pcn_dl_debug_vdprintf (fd, 0, NULL, 0, fmt, arg);
+  return pcn_dl_debug_vdprintf (fd, 0, 1, NULL, 0, fmt, arg);
 }
 
 int
@@ -329,12 +339,11 @@ lio_dbg_printf (const char *fmt, ...)
   int ret;
 
   va_start (arg, fmt);
-  ret = pcn_dl_debug_vdprintf (STDOUT_FILENO, 0, NULL, 0, fmt, arg);
+  ret = pcn_dl_debug_vdprintf (STDOUT_FILENO, 0, 1, NULL, 0, fmt, arg);
   va_end (arg);
 
   return ret;
 }
-
 
 /* Write to debug file.  */
 int
@@ -344,7 +353,7 @@ lio_printf (const char *fmt, ...)
   int ret;
 
   va_start (arg, fmt);
-  ret = pcn_dl_debug_vdprintf (lio_stdout, 0, NULL, 0, fmt, arg);
+  ret = pcn_dl_debug_vdprintf (lio_stdout, 0, 1, NULL, 0, fmt, arg);
   va_end (arg);
 
   return ret;
@@ -358,7 +367,7 @@ lio_fprintf (int fd, const char *fmt, ...)
   int ret;
 
   va_start (arg, fmt);
-  ret = pcn_dl_debug_vdprintf (fd, 0, NULL, 0, fmt, arg);
+  ret = pcn_dl_debug_vdprintf (fd, 0, 1, NULL, 0, fmt, arg);
   va_end (arg);
 
   return ret;
@@ -371,7 +380,7 @@ lio_snprintf (char *str, size_t size, const char *fmt, ...)
   int ret;
 
   va_start (arg, fmt);
-  ret = pcn_dl_debug_vdprintf (-1, 0, str, size, fmt, arg);
+  ret = pcn_dl_debug_vdprintf (-1, 0, 0, str, size, fmt, arg);
   va_end (arg);
 
   return ret;

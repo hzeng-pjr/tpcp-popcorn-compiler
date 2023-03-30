@@ -67,7 +67,8 @@ void
 __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *callback_data)
 {
 	Elf64_Ehdr ehdr;
-	Elf64_Phdr *phdrs;
+	static Elf64_Phdr *phdrs;
+	static char *libname;
 	unsigned long entry;
 	int i, fd, pt_dyn;
 	void *t, *ld_start;
@@ -112,7 +113,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 		GET_LOCAL_REGSET(regs_src);
 
 		rio_dbg_printf ("GET_LOCAL_REGSET complete\n");
-
+                //lio_spin ();
 		err = 0;
 		switch (dst_arch) {
 			case ARCH_AARCH64:
@@ -214,7 +215,7 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 //	    pcn_data->pcn_data_size += PCN_PAGE_SIZE;
 //	  }
 
-	phdrs = __builtin_alloca (ehdr.e_phnum * sizeof (Elf64_Phdr));
+	phdrs = lio_realloc (phdrs, ehdr.e_phnum * sizeof (Elf64_Phdr));
 	ret = lio_pread (fd, phdrs, ehdr.e_phnum * sizeof (Elf64_Phdr),
 			 ehdr.e_phoff);
 	if (ret < 0)
@@ -229,16 +230,15 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
 	for (i = 0; i < ehdr.e_phnum; i++)
 	  if (phdrs[i].p_paddr != ((Elf64_Phdr *) pcn_data->phdrs)[i].p_paddr)
 	    lio_error ("invalid phdr detected\n");
- 	
-	phdrs = pcn_data->phdrs;
 
 	/* Update the interpreter.  */
-	pcn_data->maps[0].name = __builtin_alloca (MAX_INTERP);
-	get_pt_exec (fd, phdrs, pcn_data->phnum, pcn_data->maps[0].name);
+        libname = lio_realloc (libname, MAX_INTERP);
+	pcn_data->maps[0].name = libname;
+	get_pt_exec (fd, pcn_data->phdrs, pcn_data->phnum, pcn_data->maps[0].name);
 	rio_dbg_printf ("interpreter = %s\n", pcn_data->maps[0].name);
 
 	/* Reload any ISA-specific segments.  */
-	reload_dynamic (phdrs, ehdr.e_phnum, fd);
+	reload_dynamic (pcn_data->phdrs, ehdr.e_phnum, fd);
 
 	entry = ehdr.e_entry;
 	restore_rw_segments (pcn_data->phdrs, pcn_data->phnum, entry);
@@ -270,84 +270,16 @@ __migrate_shim_internal(enum arch dst_arch, void (*callback) (void *), void *cal
         pcn_server_connect (0);
 }
 
-void
-__migrate_shim_internal1(enum arch dst_arch, void (*callback) (void *), void *callback_data)
-{
-	Elf64_Ehdr ehdr;
-	Elf64_Phdr *phdrs;
-	int phnum;
-	unsigned long entry;
-	int i, fd;
-	void *t, *ld_start;
-	int err, ret;
-
-	sigset_t old_sig_set;
-	sigset_t new_sig_set;
-	struct ksigaction kact, koact;
-
-	rio_dbg_printf ("entering %s...\n", __FUNCTION__);
-	rio_dbg_printf ("pid = %u\n", lio_getpid ());
-
-	_dl_rio_populate_dso_entries ();
-	print_all_dso ();
-	unload_libs ();
-	rio_dbg_printf ("unload complete\n");
-	
-	// Reload any shared libraries, beginning with ld-linux.
-	
-	pcn_data->pcn_entry = (unsigned long) &&pcn_cont;
-
-	/* Populate phdrs.  */
-	fd = lio_open (pcn_data->argv[0], O_RDONLY, 0);
-	if (fd < 0)
-		lio_error ("open failed");
-
-	ret = lio_read (fd, &ehdr, sizeof (ehdr));
-	if (ret < 0)
-		lio_error ("failed to read ELF header\n");
-
-	phnum = ehdr.e_phnum;
-	phdrs = __builtin_alloca (phnum * sizeof (Elf64_Phdr));
-
-	ret = lio_read (fd, phdrs, phnum * sizeof (Elf64_Phdr));
-	if (ret < 0)
-		lio_error ("failed to read ELF phdrs\n");
-
-	/* Update the interpreter.  */
-	pcn_data->maps[0].name = __builtin_alloca (MAX_INTERP);
-	get_pt_exec (fd, phdrs, phnum, pcn_data->maps[0].name);
-
-	entry = ehdr.e_entry;
-	restore_rw_segments (phdrs, phnum, entry);
-	reset_dynamic (phdrs, phnum, entry, pcn_data->argv[0], &ehdr, fd);
-
-	lio_close (fd);
-
-	pcn_data->pcn_entry = (unsigned long) &&pcn_cont;
-	ld_start = load_lib (pcn_data->maps[0].name); // Load ld-linux
-
-	rio_dbg_printf ("ld_start = %lx", ld_start);
-
-	lio_spin ();
-
-#if defined (__x86_64__)
-  asm volatile ("jmp *%0;\n\t" : : "r" (ld_start));
-#elif defined (__aarch64__)
-  asm volatile ("br %0;\n\t" : : "r" (ld_start));
-#else
-#lio_error "Unsupported arch"
-#endif
-
-pcn_cont:
-	printf ("reload complete!\n");
-}
-
 extern int __libc_start_main_popcorn (void *, int, void *, void *);
 
 /* Check if we should migrate, and invoke migration. */
 void check_migrate(void (*callback) (void *), void *callback_data)
 {
 	enum arch dst_arch = do_migrate(NULL);
+
+	if (pcn_data->rio_migrate_disabled)
+		return;
+
 	if (dst_arch >= 0)
 		__migrate_shim_internal(dst_arch, callback, callback_data);
 	else if (dst_arch == 100)
